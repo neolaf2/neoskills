@@ -19,6 +19,7 @@ These trigger specialized agents via the Task tool for autonomous multi-step wor
 - `/ns scan <target>` - Use the **skill-scanner** agent to discover skills across targets
 - `/ns import from-target <target> --all` - Use the **skill-importer** agent for bulk import with analysis
 - `/ns deploy skill <id> --to <target>` - Use the **skill-deployer** agent for deployment with validation
+- `/ns dedup [--repos <slug>]` - Use the **skill-dedup** agent to find and resolve duplicate skills
 
 ## CLI-Routed Commands
 
@@ -37,7 +38,7 @@ These run directly via Bash:
 
 ## Instructions
 
-**For agent-routed commands** (`scan`, `import`, `deploy`):
+**For agent-routed commands** (`scan`, `import`, `deploy`, `dedup`):
 Use the Task tool to launch the corresponding agent. Pass the user's arguments as the task prompt.
 
 **For CLI-routed commands** (everything else):

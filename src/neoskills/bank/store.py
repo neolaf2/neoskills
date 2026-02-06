@@ -6,7 +6,7 @@ from typing import Any
 
 import yaml
 
-from neoskills.core.checksum import checksum_string
+from neoskills.core.checksum import checksum_directory, checksum_string
 from neoskills.core.frontmatter import parse_frontmatter
 from neoskills.core.models import Skill, SkillFormat, SkillMetadata
 from neoskills.core.workspace import Workspace
@@ -99,6 +99,97 @@ class SkillStore:
             format=source_format,
             checksum=checksum_string(content),
         )
+
+    def add_from_dir(
+        self,
+        skill_id: str,
+        source_dir: Path,
+        source_format: SkillFormat = SkillFormat.CANONICAL,
+        metadata_overrides: dict[str, Any] | None = None,
+    ) -> Skill:
+        """Add a skill from a directory, preserving scripts/, references/, assets/.
+
+        Copies the entire source directory tree into canonical/, not just SKILL.md.
+        """
+        canonical = self.canonical_dir(skill_id)
+
+        # Remove existing canonical to get a clean copy
+        if canonical.exists():
+            shutil.rmtree(canonical)
+        canonical.mkdir(parents=True, exist_ok=True)
+
+        # Copy all files from source_dir into canonical
+        for item in source_dir.iterdir():
+            dest = canonical / item.name
+            if item.is_dir():
+                shutil.copytree(item, dest)
+            elif item.is_file():
+                shutil.copy2(item, dest)
+
+        # Read SKILL.md for metadata
+        skill_file = canonical / "SKILL.md"
+        if not skill_file.exists():
+            raise FileNotFoundError(f"No SKILL.md in {source_dir}")
+        content = skill_file.read_text()
+
+        # Also store as variant if source is agent-specific
+        if source_format != SkillFormat.CANONICAL:
+            variant = self.variant_dir(skill_id, source_format.value)
+            if variant.exists():
+                shutil.rmtree(variant)
+            shutil.copytree(canonical, variant)
+
+        # Parse metadata and write metadata.yaml
+        fm, body = parse_frontmatter(content)
+        meta = SkillMetadata(
+            name=fm.get("name", skill_id),
+            description=fm.get("description", ""),
+            version=fm.get("version", "0.1.0"),
+            author=fm.get("author", ""),
+            tags=fm.get("tags", []),
+            model=fm.get("model", ""),
+            tools=fm.get("tools", []),
+            extra={k: v for k, v in fm.items() if k not in {
+                "name", "description", "version", "author", "tags", "model", "tools"
+            }},
+        )
+        if metadata_overrides:
+            for k, v in metadata_overrides.items():
+                if hasattr(meta, k):
+                    setattr(meta, k, v)
+
+        dir_checksum = checksum_directory(canonical)
+        meta_dict = {
+            "name": meta.name,
+            "description": meta.description,
+            "version": meta.version,
+            "author": meta.author,
+            "tags": meta.tags,
+            "format": source_format.value,
+            "checksum": dir_checksum,
+        }
+        self.metadata_file(skill_id).write_text(
+            yaml.dump(meta_dict, default_flow_style=False)
+        )
+
+        return Skill(
+            skill_id=skill_id,
+            metadata=meta,
+            content=content,
+            format=source_format,
+            checksum=dir_checksum,
+        )
+
+    def exists(self, skill_id: str) -> bool:
+        """Check if a skill already exists in the bank."""
+        return (self.canonical_dir(skill_id) / "SKILL.md").exists()
+
+    def dir_checksum(self, skill_id: str) -> str | None:
+        """Compute checksum of the full canonical directory."""
+        canonical = self.canonical_dir(skill_id)
+        if not canonical.exists():
+            return None
+        return checksum_directory(canonical)
 
     def get(self, skill_id: str) -> Skill | None:
         """Get a skill by ID."""
