@@ -31,6 +31,9 @@ def _register_later_commands() -> None:
         ("neoskills.cli.embed_cmd", "unembed"),
         ("neoskills.cli.sync_cmd", "sync"),
         ("neoskills.cli.enhance_cmd", "enhance"),
+        ("neoskills.cli.validate_cmd", "validate"),
+        ("neoskills.cli.install_cmd", "install"),
+        ("neoskills.cli.agent_cmd", "agent"),
     ]
     import importlib
 

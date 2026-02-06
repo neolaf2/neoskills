@@ -15,9 +15,43 @@ from neoskills.bank.store import SkillStore
 from neoskills.core.checksum import checksum_string
 from neoskills.core.models import Provenance, SkillFormat
 from neoskills.core.workspace import Workspace
+from neoskills.mappings.resolver import SymlinkResolver
 from neoskills.mappings.target import TargetManager
 
 console = Console()
+
+
+def _auto_embed(ws: Workspace, skill_ids: list[str]) -> None:
+    """Symlink imported skills to default target (best-effort)."""
+    import yaml as _yaml
+
+    cfg = _yaml.safe_load(ws.config_file.read_text()) if ws.config_file.exists() else {}
+    target_id = cfg.get("default_target", "claude-code-user")
+
+    mgr = TargetManager(ws)
+    mgr.ensure_builtins()
+    target = mgr.get(target_id)
+    if not target or not target.install_paths:
+        return
+
+    install_base = Path(target.install_paths[0]).expanduser()
+    store = SkillStore(ws)
+    resolver = SymlinkResolver(ws)
+    actions = []
+
+    for sid in skill_ids:
+        variant_dir = store.variant_dir(sid, target.agent_type)
+        canonical = store.canonical_dir(sid)
+        bank_path = variant_dir if (variant_dir / "SKILL.md").exists() else canonical
+        if not bank_path.exists():
+            continue
+        agent_path = install_base / sid
+        action = resolver.create_symlink(sid, bank_path, agent_path)
+        actions.append(action)
+
+    if actions:
+        resolver.save_state(actions)
+        console.print(f"  [dim]Auto-embedded {len(actions)} skill(s) into '{target_id}'[/dim]")
 
 
 @click.group("import")
@@ -29,7 +63,8 @@ def import_skills() -> None:
 @click.argument("target_id")
 @click.option("--skill", "skill_ids", multiple=True, help="Specific skill ID(s) to import")
 @click.option("--all", "import_all", is_flag=True, help="Import all discovered skills")
-def from_target(target_id: str, skill_ids: tuple[str, ...], import_all: bool) -> None:
+@click.option("--no-embed", is_flag=True, help="Import to bank only, skip auto-embed")
+def from_target(target_id: str, skill_ids: tuple[str, ...], import_all: bool, no_embed: bool) -> None:
     """Import skills from a configured target."""
     ws = Workspace()
     if not ws.is_initialized:
@@ -91,12 +126,16 @@ def from_target(target_id: str, skill_ids: tuple[str, ...], import_all: bool) ->
 
     console.print(f"\n[bold green]Imported {imported} skill(s) from '{target_id}'[/bold green]")
 
+    if not no_embed and imported:
+        _auto_embed(ws, [sid for sid, _ in exported])
+
 
 @import_skills.command("from-git")
 @click.argument("url")
 @click.option("--skill", "skill_ids", multiple=True, help="Specific skill ID(s) to import")
 @click.option("--branch", default="main", help="Git branch")
-def from_git(url: str, skill_ids: tuple[str, ...], branch: str) -> None:
+@click.option("--no-embed", is_flag=True, help="Import to bank only, skip auto-embed")
+def from_git(url: str, skill_ids: tuple[str, ...], branch: str, no_embed: bool) -> None:
     """Import skills from a git repository."""
     import git
 
@@ -147,11 +186,15 @@ def from_git(url: str, skill_ids: tuple[str, ...], branch: str) -> None:
 
     console.print(f"\n[bold green]Imported {imported} skill(s) from git[/bold green]")
 
+    if not no_embed and imported:
+        _auto_embed(ws, [sid for sid, _ in skill_dirs])
+
 
 @import_skills.command("from-web")
 @click.argument("url")
 @click.option("--skill-id", default=None, help="Override skill ID")
-def from_web(url: str, skill_id: str | None) -> None:
+@click.option("--no-embed", is_flag=True, help="Import to bank only, skip auto-embed")
+def from_web(url: str, skill_id: str | None, no_embed: bool) -> None:
     """Import a skill from a web URL (raw file or zip)."""
     import urllib.request
 
@@ -174,7 +217,7 @@ def from_web(url: str, skill_id: str | None) -> None:
             shutil.unpack_archive(zip_path, tmpdir)
 
             # Find SKILL.md files
-            imported = 0
+            imported_ids = []
             for skill_md in Path(tmpdir).rglob("SKILL.md"):
                 sid = skill_id or skill_md.parent.name
                 content = skill_md.read_text()
@@ -188,10 +231,13 @@ def from_web(url: str, skill_id: str | None) -> None:
                     original_checksum=checksum_string(content),
                 )
                 prov_tracker.record(prov)
-                imported += 1
+                imported_ids.append(sid)
                 console.print(f"  [green]+[/green] {sid}")
 
-            console.print(f"\n[bold green]Imported {imported} skill(s) from zip[/bold green]")
+            console.print(f"\n[bold green]Imported {len(imported_ids)} skill(s) from zip[/bold green]")
+
+            if not no_embed and imported_ids:
+                _auto_embed(ws, imported_ids)
     else:
         # Single file URL
         with urllib.request.urlopen(url) as resp:
@@ -210,3 +256,6 @@ def from_web(url: str, skill_id: str | None) -> None:
         prov_tracker.record(prov)
         console.print(f"  [green]+[/green] {sid}")
         console.print(f"\n[bold green]Imported '{sid}' from URL[/bold green]")
+
+        if not no_embed:
+            _auto_embed(ws, [sid])

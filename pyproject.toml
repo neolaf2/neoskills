@@ -1,11 +1,23 @@
 [project]
 name = "neoskills"
-version = "0.1.0"
+version = "0.2.0"
 description = "Cross-Agent Skill Bank, Transfer System, and Embedded Skill Substrate"
 readme = "README.md"
 requires-python = ">=3.13"
 license = "MIT"
 authors = [{ name = "Richard Tong" }]
+keywords = ["skills", "agents", "claude", "opencode", "skill-bank", "transfer"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
 dependencies = [
     "pyyaml>=6.0",
     "jinja2>=3.1",
@@ -25,6 +37,11 @@ sdk = [
     "claude-agent-sdk>=0.1.0",
     "anthropic>=0.40.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/neolaf2/neoskills"
+Repository = "https://github.com/neolaf2/neoskills"
+Issues = "https://github.com/neolaf2/neoskills/issues"
 
 [project.scripts]
 neoskills = "neoskills.cli.main:cli"

@@ -6,34 +6,46 @@ user_invocable: true
 
 # /ns - neoskills Command
 
-Wraps the neoskills CLI for in-session use.
+Wraps the neoskills CLI for in-session use. Some commands route to agents for richer workflows.
 
 ## Usage
 
 `/ns <subcommand> [args]`
 
-## Subcommands
+## Agent-Routed Commands
 
-- `/ns scan <target>` - Scan a target for skills
-- `/ns import from-target <target> --skill <id>` - Import a skill
-- `/ns import from-git <url>` - Import from git repo
-- `/ns deploy skill <id> --to <target>` - Deploy a skill
+These trigger specialized agents via the Task tool for autonomous multi-step workflows:
+
+- `/ns scan <target>` - Use the **skill-scanner** agent to discover skills across targets
+- `/ns import from-target <target> --all` - Use the **skill-importer** agent for bulk import with analysis
+- `/ns deploy skill <id> --to <target>` - Use the **skill-deployer** agent for deployment with validation
+
+## CLI-Routed Commands
+
+These run directly via Bash:
+
+- `/ns validate [--skill <id>] [--fix]` - Validate skills for completeness
+- `/ns install <skill-id> [--target <t>]` - Install skill (bank + embed)
 - `/ns embed --target <target>` - Embed bank via symlinks
 - `/ns unembed --target <target>` - Remove embedded symlinks
-- `/ns enhance <op> --skill <id>` - Enhance a skill
+- `/ns enhance <op> --skill <id>` - Enhance a skill using Claude
 - `/ns sync status` - Check git status
 - `/ns target list` - List targets
 - `/ns config show` - Show configuration
+- `/ns agent list` - List available agents
+- `/ns agent run <name> --task '...'` - Run an agent via CLI
 
 ## Instructions
 
-When the user invokes `/ns`, run the corresponding neoskills CLI command using Bash:
+**For agent-routed commands** (`scan`, `import`, `deploy`):
+Use the Task tool to launch the corresponding agent. Pass the user's arguments as the task prompt.
+
+**For CLI-routed commands** (everything else):
+Run the corresponding neoskills CLI command using Bash:
 
 ```bash
 uv run neoskills <subcommand> [args]
 ```
-
-The working directory should be the neoskills project root or any directory where the `neoskills` command is available in PATH.
 
 If the user provides no subcommand, show the help:
 ```bash
