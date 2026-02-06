@@ -44,8 +44,7 @@ class Enhancer:
         instruction = ENHANCE_OPERATIONS.get(operation)
         if not instruction:
             raise ValueError(
-                f"Unknown operation: {operation}. "
-                f"Available: {', '.join(ENHANCE_OPERATIONS.keys())}"
+                f"Unknown operation: {operation}. Available: {', '.join(ENHANCE_OPERATIONS.keys())}"
             )
 
         if extra_context:

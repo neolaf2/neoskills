@@ -71,9 +71,11 @@ def init(root: str | None, repo_url: str | None, branch: str, force: bool) -> No
     console.print()
     console.print("[bold green]neoskills workspace initialized![/bold green]")
     console.print(tree)
-    console.print(f"\n[dim]Total: {len(dirs_created)} dirs, "
-                  f"{len(memory_created)} memory files, "
-                  f"{len(configs_created)} config files[/dim]")
+    console.print(
+        f"\n[dim]Total: {len(dirs_created)} dirs, "
+        f"{len(memory_created)} memory files, "
+        f"{len(configs_created)} config files[/dim]"
+    )
 
 
 def _init_from_repo(workspace: Workspace, repo_url: str, branch: str, force: bool) -> None:
@@ -86,6 +88,7 @@ def _init_from_repo(workspace: Workspace, repo_url: str, branch: str, force: boo
             console.print("[dim]Use --force to overwrite.[/dim]")
             raise SystemExit(1)
         import shutil
+
         console.print(f"[yellow]Removing existing workspace at {workspace.root}...[/yellow]")
         shutil.rmtree(workspace.root)
 
@@ -93,7 +96,7 @@ def _init_from_repo(workspace: Workspace, repo_url: str, branch: str, force: boo
     git.Repo.clone_from(repo_url, str(workspace.root), branch=branch)
 
     # Ensure any missing directories are created
-    result = workspace.initialize()
+    workspace.initialize()
 
     # Verify the clone has expected structure
     has_config = workspace.config_file.exists()
@@ -106,5 +109,9 @@ def _init_from_repo(workspace: Workspace, repo_url: str, branch: str, force: boo
     if has_bank:
         skills = [d.name for d in workspace.bank_skills.iterdir() if d.is_dir()]
         console.print(f"  Skills: {len(skills)}")
-    console.print(f"  Config: {'found' if has_config else '[yellow]missing (created default)[/yellow]'}")
-    console.print(f"  Registry: {'found' if has_registry else '[yellow]missing (created default)[/yellow]'}")
+    console.print(
+        f"  Config: {'found' if has_config else '[yellow]missing (created default)[/yellow]'}"
+    )
+    console.print(
+        f"  Registry: {'found' if has_registry else '[yellow]missing (created default)[/yellow]'}"
+    )

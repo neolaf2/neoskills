@@ -113,16 +113,18 @@ class TargetManager:
             return targets
         for f in sorted(self.targets_dir.glob("*.yaml")):
             data = yaml.safe_load(f.read_text())
-            targets.append(Target(
-                target_id=data["target_id"],
-                agent_type=data["agent_type"],
-                display_name=data.get("display_name", ""),
-                discovery_paths=data.get("discovery_paths", []),
-                install_paths=data.get("install_paths", []),
-                writable=data.get("writable", True),
-                transport=TransportType(data.get("transport", "local-fs")),
-                extra=data.get("extra", {}),
-            ))
+            targets.append(
+                Target(
+                    target_id=data["target_id"],
+                    agent_type=data["agent_type"],
+                    display_name=data.get("display_name", ""),
+                    discovery_paths=data.get("discovery_paths", []),
+                    install_paths=data.get("install_paths", []),
+                    writable=data.get("writable", True),
+                    transport=TransportType(data.get("transport", "local-fs")),
+                    extra=data.get("extra", {}),
+                )
+            )
         return targets
 
     def remove(self, target_id: str) -> bool:

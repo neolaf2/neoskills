@@ -25,9 +25,7 @@ class SymlinkResolver:
     def __init__(self, workspace: Workspace):
         self.workspace = workspace
 
-    def create_symlink(
-        self, skill_id: str, bank_path: Path, agent_path: Path
-    ) -> SymlinkAction:
+    def create_symlink(self, skill_id: str, bank_path: Path, agent_path: Path) -> SymlinkAction:
         """Create a symlink from agent skill path to bank path.
 
         If the agent path already exists, backs it up to STM/scratch/.

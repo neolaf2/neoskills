@@ -9,23 +9,15 @@ MY_MEMORY_TEMPLATES: dict[str, str] = {
         "Accumulated memory and instructions for your agents.\n"
         "Edit freely — neoskills will never overwrite this file.\n"
     ),
-    "SOUL.md": (
-        "# Soul\n\n"
-        "Define your agent's persona, boundaries, and tone.\n"
-    ),
-    "TOOLS.md": (
-        "# Tools\n\n"
-        "Notes on tools, conventions, and integrations you use.\n"
-    ),
+    "SOUL.md": ("# Soul\n\nDefine your agent's persona, boundaries, and tone.\n"),
+    "TOOLS.md": ("# Tools\n\nNotes on tools, conventions, and integrations you use.\n"),
     "BOOTSTRAP.md": (
         "# Bootstrap\n\n"
         "First-run ritual. This file is deleted after initial setup.\n"
         "Use it to define one-time onboarding steps.\n"
     ),
     "IDENTITY.md": (
-        "# Identity\n\n"
-        "Agent name, vibe, and emoji.\n"
-        "\n- Name: \n- Emoji: \n- Vibe: \n"
+        "# Identity\n\nAgent name, vibe, and emoji.\n\n- Name: \n- Emoji: \n- Vibe: \n"
     ),
     "USER.md": (
         "# User Profile\n\n"

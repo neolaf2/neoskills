@@ -47,9 +47,7 @@ def enhance(operation: str, skill_id: str, apply_result: bool, target_agent: str
     if apply_result:
         if operation == "generate-variant":
             store.add_variant(skill_id, target_agent, result)
-            console.print(
-                f"[green]Variant for '{target_agent}' saved to bank.[/green]"
-            )
+            console.print(f"[green]Variant for '{target_agent}' saved to bank.[/green]")
         else:
             store.add(skill_id, result)
             console.print("[green]Enhanced skill saved to bank.[/green]")

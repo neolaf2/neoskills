@@ -120,10 +120,7 @@ def agent_run(name: str, task: str | None) -> None:
         console.print("[dim]Set ANTHROPIC_API_KEY in .env or install claude-agent-sdk.[/dim]")
         raise SystemExit(1)
 
-    full_prompt = (
-        f"## System\n{system_prompt}\n\n"
-        f"## Task\n{task}"
-    )
+    full_prompt = f"## System\n{system_prompt}\n\n## Task\n{task}"
 
     console.print(f"[dim]Running agent '{name}'...[/dim]")
     try:

@@ -65,7 +65,9 @@ def import_skills() -> None:
 @click.option("--all", "import_all", is_flag=True, help="Import all discovered skills")
 @click.option("--no-embed", is_flag=True, help="Import to bank only, skip auto-embed")
 @click.option("--force", is_flag=True, help="Overwrite existing bank skills")
-def from_target(target_id: str, skill_ids: tuple[str, ...], import_all: bool, no_embed: bool, force: bool) -> None:
+def from_target(
+    target_id: str, skill_ids: tuple[str, ...], import_all: bool, no_embed: bool, force: bool
+) -> None:
     """Import skills from a configured target."""
     ws = Workspace()
     if not ws.is_initialized:
@@ -127,7 +129,9 @@ def from_target(target_id: str, skill_ids: tuple[str, ...], import_all: bool, no
                 console.print(f"  [dim]=[/dim] {skill_id} (identical in bank, skipped)")
                 skipped += 1
                 continue
-            console.print(f"  [yellow]![/yellow] {skill_id} (differs from bank, use --force to overwrite)")
+            console.print(
+                f"  [yellow]![/yellow] {skill_id} (differs from bank, use --force to overwrite)"
+            )
             skipped += 1
             continue
 
@@ -166,7 +170,9 @@ def from_target(target_id: str, skill_ids: tuple[str, ...], import_all: bool, no
 @click.option("--branch", default="main", help="Git branch")
 @click.option("--no-embed", is_flag=True, help="Import to bank only, skip auto-embed")
 @click.option("--force", is_flag=True, help="Overwrite existing bank skills")
-def from_git(url: str, skill_ids: tuple[str, ...], branch: str, no_embed: bool, force: bool) -> None:
+def from_git(
+    url: str, skill_ids: tuple[str, ...], branch: str, no_embed: bool, force: bool
+) -> None:
     """Import skills from a git repository."""
     import git
 
@@ -208,7 +214,9 @@ def from_git(url: str, skill_ids: tuple[str, ...], branch: str, no_embed: bool, 
                     console.print(f"  [dim]=[/dim] {skill_id} (identical in bank, skipped)")
                     skipped += 1
                     continue
-                console.print(f"  [yellow]![/yellow] {skill_id} (differs from bank, use --force to overwrite)")
+                console.print(
+                    f"  [yellow]![/yellow] {skill_id} (differs from bank, use --force to overwrite)"
+                )
                 skipped += 1
                 continue
 

@@ -61,8 +61,7 @@ def neoskills_scan(target_id: str = "claude-code-user") -> dict:
         "target": target_id,
         "count": len(discovered),
         "skills": [
-            {"id": s.skill_id, "name": s.name, "description": s.description}
-            for s in discovered
+            {"id": s.skill_id, "name": s.name, "description": s.description} for s in discovered
         ],
     }
 

@@ -50,9 +50,7 @@ class ValidationReport:
 
 # Regex to find paths like scripts/foo.sh, references/bar.md, assets/baz.png
 # in the SKILL.md body (including inside markdown links, code blocks, etc.)
-_RESOURCE_PATH_RE = re.compile(
-    r"(?:scripts|references|assets)/[\w./_-]*\w"
-)
+_RESOURCE_PATH_RE = re.compile(r"(?:scripts|references|assets)/[\w./_-]*\w")
 
 
 class SkillValidator:
@@ -69,8 +67,7 @@ class SkillValidator:
             return report
 
         skill_ids = sorted(
-            d.name for d in self.skills_dir.iterdir()
-            if d.is_dir() and not d.name.startswith(".")
+            d.name for d in self.skills_dir.iterdir() if d.is_dir() and not d.name.startswith(".")
         )
         report.total_skills = len(skill_ids)
 
@@ -113,13 +110,15 @@ class SkillValidator:
 
         # Check 1: SKILL.md exists
         if not skill_file.exists():
-            report.issues.append(ValidationIssue(
-                skill_id=skill_id,
-                severity=Severity.ERROR,
-                category=Category.STRUCTURE,
-                message="canonical/SKILL.md is missing",
-                path=canonical,
-            ))
+            report.issues.append(
+                ValidationIssue(
+                    skill_id=skill_id,
+                    severity=Severity.ERROR,
+                    category=Category.STRUCTURE,
+                    message="canonical/SKILL.md is missing",
+                    path=canonical,
+                )
+            )
             return  # Can't check further without the file
 
         content = skill_file.read_text()
@@ -127,36 +126,42 @@ class SkillValidator:
 
         # Check 2: Frontmatter has name
         if not fm.get("name"):
-            report.issues.append(ValidationIssue(
-                skill_id=skill_id,
-                severity=Severity.ERROR,
-                category=Category.FRONTMATTER,
-                message="frontmatter missing 'name' field",
-                path=skill_file,
-            ))
+            report.issues.append(
+                ValidationIssue(
+                    skill_id=skill_id,
+                    severity=Severity.ERROR,
+                    category=Category.FRONTMATTER,
+                    message="frontmatter missing 'name' field",
+                    path=skill_file,
+                )
+            )
 
         # Check 3: Frontmatter has description
         if not fm.get("description"):
-            report.issues.append(ValidationIssue(
-                skill_id=skill_id,
-                severity=Severity.ERROR,
-                category=Category.FRONTMATTER,
-                message="frontmatter missing 'description' field",
-                path=skill_file,
-            ))
+            report.issues.append(
+                ValidationIssue(
+                    skill_id=skill_id,
+                    severity=Severity.ERROR,
+                    category=Category.FRONTMATTER,
+                    message="frontmatter missing 'description' field",
+                    path=skill_file,
+                )
+            )
 
         # Check 4: Referenced paths exist on disk
         referenced_paths = set(_RESOURCE_PATH_RE.findall(body))
         for ref_path in sorted(referenced_paths):
             full_path = canonical / ref_path
             if not full_path.exists():
-                report.issues.append(ValidationIssue(
-                    skill_id=skill_id,
-                    severity=Severity.ERROR,
-                    category=Category.REFERENCE,
-                    message=f"referenced path does not exist: {ref_path}",
-                    path=full_path,
-                ))
+                report.issues.append(
+                    ValidationIssue(
+                        skill_id=skill_id,
+                        severity=Severity.ERROR,
+                        category=Category.REFERENCE,
+                        message=f"referenced path does not exist: {ref_path}",
+                        path=full_path,
+                    )
+                )
 
         # Check 5: Files in scripts/, references/, assets/ not referenced in body (orphans)
         for subdir_name in ("scripts", "references", "assets"):
@@ -168,10 +173,12 @@ class SkillValidator:
                     continue
                 rel = str(file_path.relative_to(canonical))
                 if rel not in referenced_paths:
-                    report.issues.append(ValidationIssue(
-                        skill_id=skill_id,
-                        severity=Severity.WARNING,
-                        category=Category.ORPHAN,
-                        message=f"file not referenced in SKILL.md: {rel}",
-                        path=file_path,
-                    ))
+                    report.issues.append(
+                        ValidationIssue(
+                            skill_id=skill_id,
+                            severity=Severity.WARNING,
+                            category=Category.ORPHAN,
+                            message=f"file not referenced in SKILL.md: {rel}",
+                            path=file_path,
+                        )
+                    )

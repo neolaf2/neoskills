@@ -15,7 +15,9 @@ console = Console()
 
 @click.command()
 @click.option("--target", "target_id", default="claude-code-user", help="Target to embed into")
-@click.option("--skill", "skill_ids", multiple=True, help="Specific skill(s) to embed (default: all)")
+@click.option(
+    "--skill", "skill_ids", multiple=True, help="Specific skill(s) to embed (default: all)"
+)
 def embed(target_id: str, skill_ids: tuple[str, ...]) -> None:
     """Embed bank skills into a target via symlinks."""
     ws = Workspace()
@@ -63,14 +65,14 @@ def embed(target_id: str, skill_ids: tuple[str, ...]) -> None:
         console.print(f"  [green]+[/green] {skill_id} -> {bank_path}{backup_note}")
 
     resolver.save_state(actions)
-    console.print(
-        f"\n[bold green]Embedded {len(actions)} skill(s) into '{target_id}'[/bold green]"
-    )
+    console.print(f"\n[bold green]Embedded {len(actions)} skill(s) into '{target_id}'[/bold green]")
 
 
 @click.command()
 @click.option("--target", "target_id", default="claude-code-user", help="Target to unembed from")
-@click.option("--skill", "skill_ids", multiple=True, help="Specific skill(s) (default: all embedded)")
+@click.option(
+    "--skill", "skill_ids", multiple=True, help="Specific skill(s) (default: all embedded)"
+)
 def unembed(target_id: str, skill_ids: tuple[str, ...]) -> None:
     """Remove embedded symlinks and restore originals."""
     ws = Workspace()

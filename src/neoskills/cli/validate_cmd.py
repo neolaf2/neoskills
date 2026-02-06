@@ -78,6 +78,4 @@ def _display_report(report: ValidationReport) -> None:
         )
 
     console.print(table)
-    console.print(
-        f"\n[bold]{len(report.errors)} errors, {len(report.warnings)} warnings[/bold]"
-    )
+    console.print(f"\n[bold]{len(report.errors)} errors, {len(report.warnings)} warnings[/bold]")

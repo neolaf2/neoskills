@@ -69,9 +69,11 @@ class SkillStore:
             tags=fm.get("tags", []),
             model=fm.get("model", ""),
             tools=fm.get("tools", []),
-            extra={k: v for k, v in fm.items() if k not in {
-                "name", "description", "version", "author", "tags", "model", "tools"
-            }},
+            extra={
+                k: v
+                for k, v in fm.items()
+                if k not in {"name", "description", "version", "author", "tags", "model", "tools"}
+            },
         )
         if metadata_overrides:
             for k, v in metadata_overrides.items():
@@ -88,9 +90,7 @@ class SkillStore:
             "format": source_format.value,
             "checksum": checksum_string(content),
         }
-        self.metadata_file(skill_id).write_text(
-            yaml.dump(meta_dict, default_flow_style=False)
-        )
+        self.metadata_file(skill_id).write_text(yaml.dump(meta_dict, default_flow_style=False))
 
         return Skill(
             skill_id=skill_id,
@@ -149,9 +149,11 @@ class SkillStore:
             tags=fm.get("tags", []),
             model=fm.get("model", ""),
             tools=fm.get("tools", []),
-            extra={k: v for k, v in fm.items() if k not in {
-                "name", "description", "version", "author", "tags", "model", "tools"
-            }},
+            extra={
+                k: v
+                for k, v in fm.items()
+                if k not in {"name", "description", "version", "author", "tags", "model", "tools"}
+            },
         )
         if metadata_overrides:
             for k, v in metadata_overrides.items():
@@ -168,9 +170,7 @@ class SkillStore:
             "format": source_format.value,
             "checksum": dir_checksum,
         }
-        self.metadata_file(skill_id).write_text(
-            yaml.dump(meta_dict, default_flow_style=False)
-        )
+        self.metadata_file(skill_id).write_text(yaml.dump(meta_dict, default_flow_style=False))
 
         return Skill(
             skill_id=skill_id,

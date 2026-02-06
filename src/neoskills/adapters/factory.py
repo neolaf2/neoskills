@@ -17,8 +17,7 @@ def get_adapter(agent_type: str) -> BaseAdapter:
     cls = _ADAPTERS.get(agent_type)
     if cls is None:
         raise ValueError(
-            f"No adapter for agent type '{agent_type}'. "
-            f"Available: {', '.join(_ADAPTERS.keys())}"
+            f"No adapter for agent type '{agent_type}'. Available: {', '.join(_ADAPTERS.keys())}"
         )
     return cls()
 

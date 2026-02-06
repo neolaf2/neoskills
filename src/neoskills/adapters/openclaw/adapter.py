@@ -28,15 +28,17 @@ class OpenClawAdapter(BaseAdapter):
                     if skill_file.exists():
                         content = skill_file.read_text()
                         fm, _ = parse_frontmatter(content)
-                        discovered.append(DiscoveredSkill(
-                            skill_id=item.name,
-                            name=fm.get("name", item.name),
-                            description=fm.get("description", ""),
-                            path=item,
-                            is_directory=True,
-                            has_frontmatter=bool(fm),
-                            format=SkillFormat.OPENCLAW,
-                        ))
+                        discovered.append(
+                            DiscoveredSkill(
+                                skill_id=item.name,
+                                name=fm.get("name", item.name),
+                                description=fm.get("description", ""),
+                                path=item,
+                                is_directory=True,
+                                has_frontmatter=bool(fm),
+                                format=SkillFormat.OPENCLAW,
+                            )
+                        )
         return discovered
 
     def export(self, target: Target, skill_ids: list[str]) -> list[tuple[str, str]]:

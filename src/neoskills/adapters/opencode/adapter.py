@@ -31,27 +31,31 @@ class OpenCodeAdapter(BaseAdapter):
                     if skill_file.exists():
                         content = skill_file.read_text()
                         fm, _ = parse_frontmatter(content)
-                        discovered.append(DiscoveredSkill(
-                            skill_id=item.name,
-                            name=fm.get("name", item.name),
-                            description=fm.get("description", ""),
-                            path=item,
-                            is_directory=True,
-                            has_frontmatter=bool(fm),
-                            format=SkillFormat.OPENCODE,
-                        ))
+                        discovered.append(
+                            DiscoveredSkill(
+                                skill_id=item.name,
+                                name=fm.get("name", item.name),
+                                description=fm.get("description", ""),
+                                path=item,
+                                is_directory=True,
+                                has_frontmatter=bool(fm),
+                                format=SkillFormat.OPENCODE,
+                            )
+                        )
                 elif item.is_file() and item.suffix == ".md":
                     content = item.read_text()
                     fm, _ = parse_frontmatter(content)
-                    discovered.append(DiscoveredSkill(
-                        skill_id=item.stem,
-                        name=fm.get("name", item.stem),
-                        description=fm.get("description", ""),
-                        path=item,
-                        is_directory=False,
-                        has_frontmatter=bool(fm),
-                        format=SkillFormat.OPENCODE,
-                    ))
+                    discovered.append(
+                        DiscoveredSkill(
+                            skill_id=item.stem,
+                            name=fm.get("name", item.stem),
+                            description=fm.get("description", ""),
+                            path=item,
+                            is_directory=False,
+                            has_frontmatter=bool(fm),
+                            format=SkillFormat.OPENCODE,
+                        )
+                    )
 
         return discovered
 

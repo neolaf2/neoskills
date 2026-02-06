@@ -24,10 +24,14 @@ def _default_target(workspace: Workspace) -> str:
 
 @click.command()
 @click.argument("skill_ids", nargs=-1, required=True)
-@click.option("--target", "target_id", default=None, help="Target to install into (default: from config)")
+@click.option(
+    "--target", "target_id", default=None, help="Target to install into (default: from config)"
+)
 @click.option("--no-embed", is_flag=True, help="Verify in bank only, skip symlink embedding")
 @click.option("--root", type=click.Path(), default=None, help="Workspace root override")
-def install(skill_ids: tuple[str, ...], target_id: str | None, no_embed: bool, root: str | None) -> None:
+def install(
+    skill_ids: tuple[str, ...], target_id: str | None, no_embed: bool, root: str | None
+) -> None:
     """Install skill(s) — verify in bank and embed into target."""
     ws = Workspace(Path(root)) if root else Workspace()
     if not ws.is_initialized:
@@ -94,8 +98,6 @@ def install(skill_ids: tuple[str, ...], target_id: str | None, no_embed: bool, r
 
     if actions:
         resolver.save_state(actions)
-        console.print(
-            f"\n[bold green]Installed {len(actions)} skill(s) into '{tid}'[/bold green]"
-        )
+        console.print(f"\n[bold green]Installed {len(actions)} skill(s) into '{tid}'[/bold green]")
     else:
         console.print(f"\n[dim]All skill(s) already up-to-date in '{tid}'[/dim]")
