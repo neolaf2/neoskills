@@ -26,9 +26,10 @@ def _default_target(workspace: Workspace) -> str:
 @click.argument("skill_ids", nargs=-1, required=True)
 @click.option("--target", "target_id", default=None, help="Target to install into (default: from config)")
 @click.option("--no-embed", is_flag=True, help="Verify in bank only, skip symlink embedding")
-def install(skill_ids: tuple[str, ...], target_id: str | None, no_embed: bool) -> None:
+@click.option("--root", type=click.Path(), default=None, help="Workspace root override")
+def install(skill_ids: tuple[str, ...], target_id: str | None, no_embed: bool, root: str | None) -> None:
     """Install skill(s) — verify in bank and embed into target."""
-    ws = Workspace()
+    ws = Workspace(Path(root)) if root else Workspace()
     if not ws.is_initialized:
         console.print("[red]Workspace not initialized. Run 'neoskills init' first.[/red]")
         raise SystemExit(1)
@@ -61,6 +62,10 @@ def install(skill_ids: tuple[str, ...], target_id: str | None, no_embed: bool) -
         raise SystemExit(1)
 
     install_base = Path(target.install_paths[0]).expanduser()
+    if not install_base.exists():
+        install_base.mkdir(parents=True, exist_ok=True)
+        console.print(f"  [dim]Created target directory: {install_base}[/dim]")
+
     resolver = SymlinkResolver(ws)
     actions = []
 
@@ -72,11 +77,25 @@ def install(skill_ids: tuple[str, ...], target_id: str | None, no_embed: bool) -
         bank_path = variant_dir if (variant_dir / "SKILL.md").exists() else canonical
         agent_path = install_base / sid
 
+        # Report what's happening: new, update, or replace
+        if agent_path.is_symlink():
+            existing_target = agent_path.resolve()
+            if existing_target == bank_path.resolve():
+                console.print(f"  [dim]=[/dim] {sid} (already linked)")
+                continue
+            console.print(f"  [yellow]~[/yellow] {sid} (updating symlink)")
+        elif agent_path.exists():
+            console.print(f"  [yellow]~[/yellow] {sid} (replacing existing dir, backup in STM)")
+        else:
+            console.print(f"  [green]+[/green] {sid} -> {agent_path}")
+
         action = resolver.create_symlink(sid, bank_path, agent_path)
         actions.append(action)
-        console.print(f"  [green]+[/green] {sid} -> {agent_path}")
 
-    resolver.save_state(actions)
-    console.print(
-        f"\n[bold green]Installed {len(actions)} skill(s) into '{tid}'[/bold green]"
-    )
+    if actions:
+        resolver.save_state(actions)
+        console.print(
+            f"\n[bold green]Installed {len(actions)} skill(s) into '{tid}'[/bold green]"
+        )
+    else:
+        console.print(f"\n[dim]All skill(s) already up-to-date in '{tid}'[/dim]")
