@@ -16,10 +16,24 @@ neoskills manages **skills as the common denominator** across multiple agent eco
 - **Bundle management** - group skills into deployable sets for workflows, teams, or machines
 - **Plugin mode** - runs inside Claude Code as an embedded plugin with agents and commands
 
+## Installation
+
+```bash
+pip install neoskills
+```
+
+Or with [uv](https://github.com/astral-sh/uv):
+
+```bash
+uv add neoskills
+```
+
 ## Quick Start
 
 ```bash
-# Install
+# Install from PyPI
+pip install neoskills
+# or with uv
 uv add neoskills
 
 # Initialize workspace
@@ -117,6 +131,9 @@ neoskills target add my-server \
 | `neoskills embed\|unembed` | Symlink projection into agents |
 | `neoskills sync status\|commit\|push\|pull` | Git operations on bank |
 | `neoskills enhance <op> --skill <id>` | Claude-powered enhancement |
+| `neoskills validate [--skill <id>]` | Validate skills (structure, references) |
+| `neoskills install <skill_id>...` | One-step bank verify + embed |
+| `neoskills agent list\|run` | List or run autonomous agents |
 | `neoskills config set\|get\|show` | Configuration management |
 
 ## Three Operating Modes
