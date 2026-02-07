@@ -89,3 +89,52 @@ class Bundle:
     skill_ids: list[str] = field(default_factory=list)
     created_at: datetime = field(default_factory=datetime.now)
     tags: list[str] = field(default_factory=list)
+
+
+# --- v0.3 Brew-style models ---
+
+
+@dataclass
+class SkillSpec:
+    """Unified skill metadata derived entirely from SKILL.md frontmatter.
+
+    Replaces the combination of Skill + SkillMetadata + Provenance.
+    """
+
+    skill_id: str
+    name: str
+    description: str = ""
+    version: str = ""
+    author: str = ""
+    tags: list[str] = field(default_factory=list)
+    targets: list[str] = field(default_factory=list)
+    source: str = ""
+    tools: list[str] = field(default_factory=list)
+    model: str = ""
+    tap: str = ""
+    path: Path | None = None
+
+    @classmethod
+    def from_skill_dir(cls, skill_dir: Path, tap_name: str = "") -> "SkillSpec":
+        """Parse a SkillSpec from a skill directory containing SKILL.md."""
+        from neoskills.core.frontmatter import parse_frontmatter
+
+        skill_md = skill_dir / "SKILL.md"
+        if not skill_md.exists():
+            raise FileNotFoundError(f"No SKILL.md in {skill_dir}")
+
+        fm, _ = parse_frontmatter(skill_md.read_text())
+        return cls(
+            skill_id=skill_dir.name,
+            name=fm.get("name", skill_dir.name),
+            description=fm.get("description", ""),
+            version=fm.get("version", ""),
+            author=fm.get("author", ""),
+            tags=fm.get("tags", []),
+            targets=fm.get("targets", []),
+            source=fm.get("source", tap_name),
+            tools=fm.get("tools", []),
+            model=fm.get("model", ""),
+            tap=tap_name,
+            path=skill_dir,
+        )

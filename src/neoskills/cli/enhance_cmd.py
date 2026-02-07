@@ -4,8 +4,8 @@ import click
 from rich.console import Console
 from rich.panel import Panel
 
-from neoskills.bank.store import SkillStore
-from neoskills.core.workspace import Workspace
+from neoskills.core.cellar import Cellar
+from neoskills.core.tap import TapManager
 from neoskills.meta.enhancer import ENHANCE_OPERATIONS, Enhancer
 
 console = Console()
@@ -16,14 +16,22 @@ console = Console()
 @click.option("--skill", "skill_id", required=True, help="Skill ID to enhance")
 @click.option("--apply", "apply_result", is_flag=True, help="Apply the result to the skill")
 @click.option("--target-agent", default="opencode", help="Target agent for generate-variant")
-def enhance(operation: str, skill_id: str, apply_result: bool, target_agent: str) -> None:
+@click.option("--root", default=None, type=click.Path(), help="Workspace root.")
+def enhance(operation: str, skill_id: str, apply_result: bool, target_agent: str, root: str | None) -> None:
     """Enhance a skill using Claude."""
-    ws = Workspace()
-    store = SkillStore(ws)
+    from pathlib import Path
 
-    skill = store.get(skill_id)
-    if not skill:
-        console.print(f"[red]Skill '{skill_id}' not found in bank.[/red]")
+    cellar = Cellar(Path(root) if root else None)
+    mgr = TapManager(cellar)
+
+    skill_path = mgr.get_skill_path(skill_id)
+    if not skill_path:
+        console.print(f"[red]Skill '{skill_id}' not found in any tap.[/red]")
+        raise SystemExit(1)
+
+    skill_md = skill_path / "SKILL.md"
+    if not skill_md.exists():
+        console.print(f"[red]No SKILL.md found for '{skill_id}'.[/red]")
         raise SystemExit(1)
 
     enhancer = Enhancer()
@@ -38,19 +46,17 @@ def enhance(operation: str, skill_id: str, apply_result: bool, target_agent: str
     if operation == "generate-variant":
         extra_context["target_agent"] = target_agent
 
+    content = skill_md.read_text()
+
     try:
-        result = enhancer.enhance(skill.content, operation, extra_context)
+        result = enhancer.enhance(content, operation, extra_context)
     except Exception as e:
         console.print(f"[red]Enhancement failed: {e}[/red]")
         raise SystemExit(1)
 
     if apply_result:
-        if operation == "generate-variant":
-            store.add_variant(skill_id, target_agent, result)
-            console.print(f"[green]Variant for '{target_agent}' saved to bank.[/green]")
-        else:
-            store.add(skill_id, result)
-            console.print("[green]Enhanced skill saved to bank.[/green]")
+        skill_md.write_text(result)
+        console.print(f"[green]Enhanced skill saved to {skill_path}.[/green]")
     else:
         console.print(Panel(result, title=f"Enhancement: {operation}", border_style="cyan"))
-        console.print("[dim]Use --apply to write changes to the bank.[/dim]")
+        console.print("[dim]Use --apply to write changes to the skill.[/dim]")

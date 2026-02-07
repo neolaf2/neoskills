@@ -3,15 +3,15 @@
 import pytest
 from pathlib import Path
 
-from neoskills.core.workspace import Workspace
+from neoskills.core.cellar import Cellar
 
 
 @pytest.fixture
-def tmp_workspace(tmp_path: Path) -> Workspace:
-    """Create a temporary neoskills workspace."""
-    ws = Workspace(root=tmp_path / ".neoskills")
-    ws.initialize()
-    return ws
+def tmp_cellar(tmp_path: Path) -> Cellar:
+    """Create a temporary neoskills workspace using the new Cellar."""
+    cellar = Cellar(root=tmp_path / ".neoskills")
+    cellar.initialize()
+    return cellar
 
 
 @pytest.fixture

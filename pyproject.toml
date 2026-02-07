@@ -1,7 +1,7 @@
 [project]
 name = "neoskills"
-version = "0.2.1"
-description = "Cross-Agent Skill Bank, Transfer System, and Embedded Skill Substrate"
+version = "0.3.0"
+description = "Homebrew-style skill manager for AI coding agents"
 readme = "README.md"
 requires-python = ">=3.13"
 license = "MIT"

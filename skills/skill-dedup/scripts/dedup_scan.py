@@ -3,21 +3,35 @@
 
 Usage:
     python3 dedup_scan.py [--bank ~/.neoskills] [--targets claude opencode] [--repos neolaf2/mySkills]
+    python3 dedup_scan.py --resolve exact --dry-run
+    python3 dedup_scan.py --resolve all
 
-Outputs a JSON report of duplicate groups with checksums, locations, and
-recommended actions.
+Outputs a report of duplicate groups with checksums, locations, and
+recommended actions. Optionally auto-resolves duplicates.
 """
 
 import argparse
 import hashlib
 import json
+import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
 from collections import defaultdict
 from difflib import SequenceMatcher
 from pathlib import Path
+
+# Optional neoskills integration for resolution
+try:
+    from neoskills.core.workspace import Workspace
+    from neoskills.mappings.resolver import SymlinkResolver
+    from neoskills.bank.store import SkillStore
+
+    NEOSKILLS_AVAILABLE = True
+except ImportError:
+    NEOSKILLS_AVAILABLE = False
 
 
 def sha256(text: str) -> str:
@@ -37,11 +51,7 @@ def _is_intrinsic(rel: Path) -> bool:
 
 
 def sha256_dir(dirpath: Path) -> str:
-    """SHA256 of intrinsic skill files in a directory (sorted by relative path).
-
-    Skips neoskills metadata, build artifacts, and VCS files so that
-    bank and target copies with the same content produce the same hash.
-    """
+    """SHA256 of intrinsic skill files in a directory (sorted by relative path)."""
     h = hashlib.sha256()
     for f in sorted(dirpath.rglob("*")):
         if f.is_file():
@@ -60,11 +70,12 @@ def parse_frontmatter(content: str) -> tuple[dict, str]:
     if end == -1:
         return {}, content
     import yaml
+
     try:
         meta = yaml.safe_load(content[3:end]) or {}
     except Exception:
         meta = {}
-    return meta, content[end + 3:].strip()
+    return meta, content[end + 3 :].strip()
 
 
 def find_skills(base: Path) -> list[dict]:
@@ -85,25 +96,30 @@ def find_skills(base: Path) -> list[dict]:
         if skill_file:
             content = skill_file.read_text(encoding="utf-8")
             meta, body = parse_frontmatter(content)
-            # Checksum the full directory (scripts, references, assets)
             if item.is_dir():
                 dir_cksum = sha256_dir(item)
-                file_count = sum(1 for f in item.rglob("*")
-                                 if f.is_file() and _is_intrinsic(f.relative_to(item)))
+                file_count = sum(
+                    1
+                    for f in item.rglob("*")
+                    if f.is_file() and _is_intrinsic(f.relative_to(item))
+                )
             else:
                 dir_cksum = sha256(content)
                 file_count = 1
-            skills.append({
-                "id": item.stem if item.is_file() else item.name,
-                "name": meta.get("name", item.name),
-                "description": meta.get("description", ""),
-                "path": str(skill_file),
-                "checksum": dir_cksum,
-                "content_checksum": sha256(content),
-                "content_length": len(content),
-                "file_count": file_count,
-                "is_dir": item.is_dir(),
-            })
+            skills.append(
+                {
+                    "id": item.stem if item.is_file() else item.name,
+                    "name": meta.get("name", item.name),
+                    "description": str(meta.get("description", "")),
+                    "path": str(skill_file),
+                    "dir_path": str(item),
+                    "checksum": dir_cksum,
+                    "content_checksum": sha256(content),
+                    "content_length": len(content),
+                    "file_count": file_count,
+                    "is_dir": item.is_dir(),
+                }
+            )
     return skills
 
 
@@ -121,30 +137,31 @@ def find_bank_skills(bank_root: Path) -> list[dict]:
         if canonical.exists():
             content = canonical.read_text(encoding="utf-8")
             meta, body = parse_frontmatter(content)
-            # Checksum the full canonical directory (includes scripts/, references/, assets/)
             dir_cksum = sha256_dir(canonical_dir)
-            file_count = sum(1 for f in canonical_dir.rglob("*")
-                             if f.is_file() and _is_intrinsic(f.relative_to(canonical_dir)))
-            skills.append({
-                "id": skill_dir.name,
-                "name": meta.get("name", skill_dir.name),
-                "description": meta.get("description", ""),
-                "path": str(canonical),
-                "checksum": dir_cksum,
-                "content_checksum": sha256(content),
-                "content_length": len(content),
-                "file_count": file_count,
-                "source": "bank",
-            })
+            file_count = sum(
+                1
+                for f in canonical_dir.rglob("*")
+                if f.is_file() and _is_intrinsic(f.relative_to(canonical_dir))
+            )
+            skills.append(
+                {
+                    "id": skill_dir.name,
+                    "name": meta.get("name", skill_dir.name),
+                    "description": str(meta.get("description", "")),
+                    "path": str(canonical),
+                    "dir_path": str(canonical_dir),
+                    "checksum": dir_cksum,
+                    "content_checksum": sha256(content),
+                    "content_length": len(content),
+                    "file_count": file_count,
+                    "source": "bank",
+                }
+            )
     return skills
 
 
 def find_repo_skills(repo_slug: str, clone_dir: Path | None = None) -> list[dict]:
-    """Clone a GitHub repo and find all skills recursively.
-
-    Handles nested structures like mySkills (custom/<skill>/, downloaded/<skill>/, etc.)
-    by walking up to 3 levels deep looking for SKILL.md files.
-    """
+    """Clone a GitHub repo and find all skills recursively."""
     skills = []
     if clone_dir is None:
         clone_dir = Path(tempfile.mkdtemp(prefix="dedup_"))
@@ -154,118 +171,445 @@ def find_repo_skills(repo_slug: str, clone_dir: Path | None = None) -> list[dict
         url = f"https://github.com/{repo_slug}.git"
         result = subprocess.run(
             ["git", "clone", "--depth", "1", "--quiet", url, str(repo_dir)],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         if result.returncode != 0:
-            print(f"Warning: failed to clone {repo_slug}: {result.stderr.strip()}", file=sys.stderr)
+            print(
+                f"Warning: failed to clone {repo_slug}: {result.stderr.strip()}",
+                file=sys.stderr,
+            )
             return skills
 
-    # Recursively find all SKILL.md files (up to 3 levels deep)
     for skill_md in sorted(repo_dir.rglob("SKILL.md")):
-        # The skill directory is the parent of SKILL.md
         skill_dir = skill_md.parent
-        # Compute a relative category path for context (e.g. "custom/academic-paper-coach")
         rel = skill_md.relative_to(repo_dir)
-        # Skip hidden directories
         if any(part.startswith(".") for part in rel.parts):
             continue
 
         content = skill_md.read_text(encoding="utf-8")
         meta, body = parse_frontmatter(content)
         skill_id = skill_dir.name
-        # Include category in the display path
         category = "/".join(rel.parts[:-2]) if len(rel.parts) > 2 else ""
         display = f"{category}/{skill_id}" if category else skill_id
 
         dir_cksum = sha256_dir(skill_dir)
-        file_count = sum(1 for f in skill_dir.rglob("*")
-                         if f.is_file() and _is_intrinsic(f.relative_to(skill_dir)))
-        skills.append({
-            "id": skill_id,
-            "name": meta.get("name", skill_id),
-            "description": meta.get("description", ""),
-            "path": str(skill_md),
-            "checksum": dir_cksum,
-            "content_checksum": sha256(content),
-            "content_length": len(content),
-            "file_count": file_count,
-            "source": repo_slug.split("/")[-1],
-            "display": display,
-        })
+        file_count = sum(
+            1
+            for f in skill_dir.rglob("*")
+            if f.is_file() and _is_intrinsic(f.relative_to(skill_dir))
+        )
+        skills.append(
+            {
+                "id": skill_id,
+                "name": meta.get("name", skill_id),
+                "description": str(meta.get("description", "")),
+                "path": str(skill_md),
+                "dir_path": str(skill_dir),
+                "checksum": dir_cksum,
+                "content_checksum": sha256(content),
+                "content_length": len(content),
+                "file_count": file_count,
+                "source": repo_slug.split("/")[-1],
+                "display": display,
+            }
+        )
     return skills
 
 
-def name_similarity(a: str, b: str) -> float:
-    """Compute similarity between two skill names (0.0 to 1.0)."""
-    # Normalize: lowercase, strip common prefixes/suffixes, remove hyphens
-    def normalize(s):
-        s = s.lower().strip()
-        s = re.sub(r"[-_]", " ", s)
-        return s
-    return SequenceMatcher(None, normalize(a), normalize(b)).ratio()
+def find_plugin_skills() -> list[dict]:
+    """Find skills in Claude Code plugins (installed and cached)."""
+    skills = []
+    plugins_root = Path.home() / ".claude" / "plugins"
+    if not plugins_root.exists():
+        return skills
+
+    # Scan both direct plugin dirs and cache dirs
+    search_dirs = []
+    for item in sorted(plugins_root.iterdir()):
+        if not item.is_dir() or item.name.startswith("."):
+            continue
+        if item.name == "cache":
+            # Cache has nested structure: cache/<org>-<plugin>-<name>/<subdir>/skills/
+            for cached in sorted(item.rglob("skills")):
+                if cached.is_dir():
+                    # Derive plugin name from parent path
+                    rel = cached.relative_to(item)
+                    plugin_name = rel.parts[0] if rel.parts else "unknown"
+                    search_dirs.append((cached, f"plugin:{plugin_name}"))
+        else:
+            skills_dir = item / "skills"
+            if skills_dir.exists():
+                search_dirs.append((skills_dir, f"plugin:{item.name}"))
+
+    for skills_dir, source_label in search_dirs:
+        found = find_skills(skills_dir)
+        for s in found:
+            s["source"] = source_label
+        skills.extend(found)
+
+    return skills
 
 
-def find_duplicates(all_skills: list[dict], similarity_threshold: float = 0.75):
-    """Find duplicate groups by checksum and name similarity."""
-    # Group 1: Exact checksum matches
+def _normalize_text(s: str) -> str:
+    """Normalize text for similarity comparison."""
+    s = s.lower().strip()
+    s = re.sub(r"[-_]", " ", s)
+    return s
+
+
+def compute_similarity(a: dict, b: dict) -> dict:
+    """Compute multi-factor similarity between two skills.
+
+    Returns dict with id_sim, desc_sim, combined, is_same_id.
+    """
+    norm_a_id = _normalize_text(a["id"])
+    norm_b_id = _normalize_text(b["id"])
+    id_sim = SequenceMatcher(None, norm_a_id, norm_b_id).ratio()
+
+    desc_a = _normalize_text(a.get("description", ""))
+    desc_b = _normalize_text(b.get("description", ""))
+    # For empty descriptions, fall back to ID-only comparison
+    if not desc_a or not desc_b:
+        desc_sim = 0.0
+    else:
+        desc_sim = SequenceMatcher(None, desc_a, desc_b).ratio()
+
+    combined = id_sim * 0.6 + desc_sim * 0.4
+    is_same_id = a["id"] == b["id"]
+
+    return {
+        "id_sim": round(id_sim, 3),
+        "desc_sim": round(desc_sim, 3),
+        "combined": round(combined, 3),
+        "is_same_id": is_same_id,
+    }
+
+
+def _passes_similarity_gate(sim: dict, threshold: float) -> bool:
+    """Check if a similarity result passes the multi-factor gate."""
+    if sim["combined"] < threshold:
+        return False
+    # Must have strong ID match, or decent ID + decent description match
+    if sim["id_sim"] >= 0.85:
+        return True
+    if sim["id_sim"] >= 0.75 and sim["desc_sim"] >= 0.60:
+        return True
+    return False
+
+
+def find_duplicates(all_skills: list[dict], similarity_threshold: float = 0.80):
+    """Find duplicate groups: exact, diverged, and name-similar.
+
+    Returns:
+        tuple: (exact_dupes, diverged_copies, name_similar_groups)
+    """
+    # Step 1: Exact checksum matches
     by_checksum = defaultdict(list)
     for s in all_skills:
         by_checksum[s["checksum"]].append(s)
     exact_dupes = {k: v for k, v in by_checksum.items() if len(v) > 1}
 
-    # Group 2: Name-similar skills (not already in exact dupes)
-    exact_ids = set()
+    # Step 2: Diverged copies — same ID, different checksums, multiple sources
+    by_id = defaultdict(list)
+    for s in all_skills:
+        by_id[s["id"]].append(s)
+
+    diverged_copies = {}
+    for skill_id, group in by_id.items():
+        if len(group) <= 1:
+            continue
+        sources = set(s.get("source", "unknown") for s in group)
+        if len(sources) <= 1:
+            continue
+        checksums = set(s["checksum"] for s in group)
+        if len(checksums) > 1:
+            diverged_copies[skill_id] = group
+
+    # Build exclusion sets for name-similar
+    exact_keys = set()
     for group in exact_dupes.values():
         for s in group:
-            exact_ids.add((s["id"], s.get("source", s.get("path", ""))))
+            exact_keys.add((s["id"], s.get("source", "")))
 
+    diverged_keys = set()
+    for group in diverged_copies.values():
+        for s in group:
+            diverged_keys.add((s["id"], s.get("source", "")))
+
+    # Step 3: Name-similar (different IDs only, exclude already categorized)
     name_groups = []
     seen = set()
-    remaining = [s for s in all_skills]
-    for i, a in enumerate(remaining):
-        if a["id"] in seen:
+    for i, a in enumerate(all_skills):
+        key_a = (a["id"], a.get("source", ""))
+        if key_a in exact_keys or key_a in diverged_keys or a["id"] in seen:
             continue
         group = [a]
-        for j, b in enumerate(remaining):
-            if i == j or b["id"] in seen:
+        for j, b in enumerate(all_skills):
+            if i == j:
                 continue
-            if a["checksum"] == b["checksum"]:
-                continue  # already in exact dupes
-            sim = name_similarity(a["id"], b["id"])
-            if sim >= similarity_threshold:
+            key_b = (b["id"], b.get("source", ""))
+            if key_b in exact_keys or key_b in diverged_keys or b["id"] in seen:
+                continue
+            if a["id"] == b["id"]:
+                continue  # same-ID handled by diverged category
+            sim = compute_similarity(a, b)
+            if _passes_similarity_gate(sim, similarity_threshold):
                 group.append(b)
                 seen.add(b["id"])
         if len(group) > 1:
             seen.add(a["id"])
             name_groups.append(group)
 
-    return exact_dupes, name_groups
+    return exact_dupes, diverged_copies, name_groups
 
 
-def recommend_action(group: list[dict]) -> str:
+def recommend_action(group: list[dict], category: str = "name_similar") -> str:
     """Recommend an action for a duplicate group."""
-    sources = set(s.get("source", "target") for s in group)
-    checksums = set(s["checksum"] for s in group)
-    if len(checksums) == 1:
-        return "EXACT_DUPLICATE: keep one, remove others"
-    # Different content - need manual review
+    if category == "exact":
+        bank_copies = [s for s in group if s.get("source") == "bank"]
+        if bank_copies:
+            return "EXACT_DUPLICATE: Replace target copies with symlinks to bank"
+        return "EXACT_DUPLICATE: Import one to bank, symlink others"
+
+    if category == "diverged":
+        file_counts = [(s.get("file_count", 1), s.get("source", "?")) for s in group]
+        richer = max(file_counts, key=lambda x: x[0])
+        if richer[1] == "bank":
+            return "DIVERGED: Bank has richer copy, replace targets with symlinks"
+        return f"DIVERGED: Import richer copy from {richer[1]} to bank, then symlink"
+
+    # name_similar
     lengths = [s["content_length"] for s in group]
     if max(lengths) > min(lengths) * 1.5:
-        return "DIVERGED: versions differ significantly, review and merge"
-    return "SIMILAR: minor differences, review and choose canonical version"
+        return "SIMILAR_NAME: Significant content differences, manual review needed"
+    return "SIMILAR_NAME: Minor differences, review and choose canonical version"
+
+
+# ---------------------------------------------------------------------------
+# Resolution
+# ---------------------------------------------------------------------------
+
+
+def _get_bank_canonical(skill_id: str, bank_root: Path) -> Path | None:
+    """Get the canonical directory path for a bank skill."""
+    canonical = bank_root / "LTM" / "bank" / "skills" / skill_id / "canonical"
+    if canonical.exists():
+        return canonical
+    return None
+
+
+def _target_dir_from_skill(skill_info: dict) -> Path | None:
+    """Get the actual directory path for a skill (works for dirs and files)."""
+    dir_path = skill_info.get("dir_path")
+    if dir_path:
+        return Path(dir_path)
+    # Fall back to parent of SKILL.md path
+    path = skill_info.get("path")
+    if path:
+        p = Path(path)
+        if p.name == "SKILL.md":
+            return p.parent
+        return p
+    return None
+
+
+def resolve_exact(exact_dupes: dict, bank_root: Path, dry_run: bool = False) -> list[dict]:
+    """Replace exact-duplicate target copies with symlinks to bank canonical."""
+    actions = []
+    for checksum, group in exact_dupes.items():
+        bank_copies = [s for s in group if s.get("source") == "bank"]
+        target_copies = [s for s in group if s.get("source") != "bank"]
+
+        if not bank_copies or not target_copies:
+            continue
+
+        bank_path = _get_bank_canonical(bank_copies[0]["id"], bank_root)
+        if not bank_path:
+            continue
+
+        for tc in target_copies:
+            target_path = _target_dir_from_skill(tc)
+            if not target_path or not target_path.exists():
+                continue
+            # Skip if already a symlink
+            if target_path.is_symlink():
+                actions.append(
+                    {
+                        "skill_id": tc["id"],
+                        "source": tc.get("source", "?"),
+                        "action": "skip",
+                        "reason": "already a symlink",
+                    }
+                )
+                continue
+
+            if dry_run:
+                actions.append(
+                    {
+                        "skill_id": tc["id"],
+                        "source": tc.get("source", "?"),
+                        "action": "would_symlink",
+                        "target": str(target_path),
+                        "link_to": str(bank_path),
+                    }
+                )
+            else:
+                # Back up then replace with symlink
+                backup = target_path.parent / f".{target_path.name}.dedup-backup"
+                if target_path.is_dir():
+                    shutil.move(str(target_path), str(backup))
+                else:
+                    shutil.copy2(str(target_path), str(backup))
+                    target_path.unlink()
+                os.symlink(str(bank_path), str(target_path))
+                actions.append(
+                    {
+                        "skill_id": tc["id"],
+                        "source": tc.get("source", "?"),
+                        "action": "symlinked",
+                        "target": str(target_path),
+                        "link_to": str(bank_path),
+                        "backup": str(backup),
+                    }
+                )
+    return actions
+
+
+def resolve_diverged(
+    diverged_copies: dict, bank_root: Path, dry_run: bool = False
+) -> list[dict]:
+    """Import the richer diverged copy into the bank, then symlink targets."""
+    actions = []
+    for skill_id, group in diverged_copies.items():
+        # Find the richest copy
+        richest = max(group, key=lambda s: s.get("file_count", 1))
+        richest_source = richest.get("source", "unknown")
+
+        if richest_source != "bank":
+            richest_dir = _target_dir_from_skill(richest)
+            if not richest_dir or not richest_dir.exists():
+                continue
+
+            if dry_run:
+                actions.append(
+                    {
+                        "skill_id": skill_id,
+                        "action": "would_import",
+                        "from_source": richest_source,
+                        "file_count": richest.get("file_count", 1),
+                    }
+                )
+            else:
+                # Import using neoskills API if available, else manual copy
+                canonical_dest = bank_root / "LTM" / "bank" / "skills" / skill_id / "canonical"
+                if canonical_dest.exists():
+                    shutil.rmtree(canonical_dest)
+                canonical_dest.mkdir(parents=True, exist_ok=True)
+                for item in richest_dir.iterdir():
+                    dest = canonical_dest / item.name
+                    if item.is_dir():
+                        shutil.copytree(item, dest)
+                    elif item.is_file():
+                        shutil.copy2(item, dest)
+                actions.append(
+                    {
+                        "skill_id": skill_id,
+                        "action": "imported",
+                        "from_source": richest_source,
+                        "file_count": richest.get("file_count", 1),
+                    }
+                )
+
+        # Symlink all target copies to bank canonical
+        bank_path = _get_bank_canonical(skill_id, bank_root)
+        if not bank_path:
+            continue
+
+        for s in group:
+            if s.get("source") == "bank":
+                continue
+            target_path = _target_dir_from_skill(s)
+            if not target_path or not target_path.exists() or target_path.is_symlink():
+                continue
+
+            if dry_run:
+                actions.append(
+                    {
+                        "skill_id": skill_id,
+                        "source": s.get("source", "?"),
+                        "action": "would_symlink",
+                        "target": str(target_path),
+                        "link_to": str(bank_path),
+                    }
+                )
+            else:
+                backup = target_path.parent / f".{target_path.name}.dedup-backup"
+                if target_path.is_dir():
+                    shutil.move(str(target_path), str(backup))
+                else:
+                    shutil.copy2(str(target_path), str(backup))
+                    target_path.unlink()
+                os.symlink(str(bank_path), str(target_path))
+                actions.append(
+                    {
+                        "skill_id": skill_id,
+                        "source": s.get("source", "?"),
+                        "action": "symlinked",
+                        "target": str(target_path),
+                        "link_to": str(bank_path),
+                        "backup": str(backup),
+                    }
+                )
+    return actions
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
 
 
 def main():
     parser = argparse.ArgumentParser(description="Scan for duplicate skills")
-    parser.add_argument("--bank", default=str(Path.home() / ".neoskills"),
-                        help="Path to neoskills workspace")
-    parser.add_argument("--targets", nargs="*", default=["claude", "opencode"],
-                        help="Targets to scan")
-    parser.add_argument("--repos", nargs="*", default=[],
-                        help="GitHub repos to scan (e.g. neolaf2/mySkills)")
-    parser.add_argument("--threshold", type=float, default=0.75,
-                        help="Name similarity threshold (0.0-1.0)")
+    parser.add_argument(
+        "--bank",
+        default=str(Path.home() / ".neoskills"),
+        help="Path to neoskills workspace",
+    )
+    parser.add_argument(
+        "--targets",
+        nargs="*",
+        default=["claude", "opencode"],
+        help="Targets to scan",
+    )
+    parser.add_argument(
+        "--repos",
+        nargs="*",
+        default=[],
+        help="GitHub repos to scan (e.g. neolaf2/mySkills)",
+    )
+    parser.add_argument(
+        "--threshold",
+        type=float,
+        default=0.80,
+        help="Combined similarity threshold (0.0-1.0, default: 0.80)",
+    )
     parser.add_argument("--json", action="store_true", help="Output as JSON")
+    parser.add_argument(
+        "--no-plugins",
+        action="store_true",
+        help="Skip scanning ~/.claude/plugins/",
+    )
+    parser.add_argument(
+        "--resolve",
+        choices=["exact", "diverged", "all"],
+        help="Auto-resolve duplicates",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show what --resolve would do without making changes",
+    )
     args = parser.parse_args()
 
     bank_root = Path(args.bank)
@@ -294,6 +638,14 @@ def main():
             all_skills.extend(target_skills)
     sources_label.extend(args.targets)
 
+    # Plugin skills
+    if not args.no_plugins:
+        plugin_skills = find_plugin_skills()
+        if plugin_skills:
+            all_skills.extend(plugin_skills)
+            plugin_sources = sorted(set(s.get("source", "") for s in plugin_skills))
+            sources_label.extend(plugin_sources)
+
     # GitHub repo skills
     clone_dir = Path(tempfile.mkdtemp(prefix="dedup_")) if args.repos else None
     for repo_slug in args.repos:
@@ -301,50 +653,147 @@ def main():
         all_skills.extend(repo_skills)
         sources_label.append(repo_slug)
 
-    # Find duplicates
-    exact_dupes, name_groups = find_duplicates(all_skills, args.threshold)
+    # Find duplicates (3 categories)
+    exact_dupes, diverged_copies, name_groups = find_duplicates(
+        all_skills, args.threshold
+    )
 
+    # Auto-resolve if requested
+    resolution_actions = []
+    if args.resolve:
+        if args.resolve in ("exact", "all"):
+            resolution_actions.extend(
+                resolve_exact(exact_dupes, bank_root, args.dry_run)
+            )
+        if args.resolve in ("diverged", "all"):
+            resolution_actions.extend(
+                resolve_diverged(diverged_copies, bank_root, args.dry_run)
+            )
+
+    # Output
     if args.json:
         report = {
             "total_skills": len(all_skills),
+            "sources_scanned": sources_label,
             "exact_duplicates": [
-                {"checksum": k[:16], "count": len(v), "action": recommend_action(v),
-                 "skills": [{"id": s["id"], "source": s.get("source", "unknown")} for s in v]}
+                {
+                    "checksum": k[:16],
+                    "count": len(v),
+                    "action": recommend_action(v, "exact"),
+                    "skills": [
+                        {
+                            "id": s["id"],
+                            "source": s.get("source", "unknown"),
+                            "file_count": s.get("file_count", 1),
+                            "path": s.get("path"),
+                        }
+                        for s in v
+                    ],
+                }
                 for k, v in exact_dupes.items()
             ],
+            "diverged_copies": [
+                {
+                    "skill_id": skill_id,
+                    "count": len(group),
+                    "action": recommend_action(group, "diverged"),
+                    "skills": [
+                        {
+                            "source": s.get("source", "unknown"),
+                            "checksum": s["checksum"][:16],
+                            "file_count": s.get("file_count", 1),
+                            "path": s.get("path"),
+                        }
+                        for s in group
+                    ],
+                }
+                for skill_id, group in diverged_copies.items()
+            ],
             "name_similar": [
-                {"action": recommend_action(g),
-                 "skills": [{"id": s["id"], "source": s.get("source", "unknown"),
-                             "checksum": s["checksum"][:16]} for s in g]}
+                {
+                    "action": recommend_action(g, "name_similar"),
+                    "skills": [
+                        {
+                            "id": s["id"],
+                            "source": s.get("source", "unknown"),
+                            "checksum": s["checksum"][:16],
+                            "file_count": s.get("file_count", 1),
+                        }
+                        for s in g
+                    ],
+                }
                 for g in name_groups
             ],
         }
+        if resolution_actions:
+            report["resolution_actions"] = resolution_actions
         print(json.dumps(report, indent=2))
     else:
-        print(f"Scanned {len(all_skills)} skills across bank + {', '.join(sources_label)}\n")
+        print(
+            f"Scanned {len(all_skills)} skills across bank + {', '.join(sources_label)}\n"
+        )
 
         if exact_dupes:
             print(f"=== EXACT DUPLICATES ({len(exact_dupes)} groups) ===\n")
             for checksum, group in exact_dupes.items():
-                action = recommend_action(group)
+                action = recommend_action(group, "exact")
                 print(f"  Checksum: {checksum[:16]}...")
                 for s in group:
-                    fc = s.get('file_count', '?')
-                    print(f"    - {s['id']} [{s.get('source', '?')}] ({fc} files)")
+                    fc = s.get("file_count", "?")
+                    print(
+                        f"    - {s['id']} [{s.get('source', '?')}] ({fc} files)"
+                    )
                 print(f"    Action: {action}\n")
         else:
             print("No exact duplicates found.\n")
 
+        if diverged_copies:
+            print(
+                f"=== DIVERGED COPIES ({len(diverged_copies)} groups) ===\n"
+            )
+            for skill_id, group in diverged_copies.items():
+                action = recommend_action(group, "diverged")
+                print(f"  Skill: {skill_id}")
+                for s in group:
+                    fc = s.get("file_count", "?")
+                    print(
+                        f"    - [{s.get('source', '?')}] {fc} files, checksum {s['checksum'][:16]}..."
+                    )
+                print(f"    Action: {action}\n")
+        else:
+            print("No diverged copies found.\n")
+
         if name_groups:
             print(f"=== NAME-SIMILAR GROUPS ({len(name_groups)} groups) ===\n")
             for group in name_groups:
-                action = recommend_action(group)
+                action = recommend_action(group, "name_similar")
                 for s in group:
-                    fc = s.get('file_count', '?')
-                    print(f"    - {s['id']} [{s.get('source', '?')}] ({fc} files, {s['checksum'][:16]}...)")
+                    fc = s.get("file_count", "?")
+                    print(
+                        f"    - {s['id']} [{s.get('source', '?')}] ({fc} files, {s['checksum'][:16]}...)"
+                    )
                 print(f"    Action: {action}\n")
         else:
             print("No name-similar groups found.\n")
+
+        if resolution_actions:
+            label = "DRY RUN — " if args.dry_run else ""
+            print(f"=== {label}RESOLUTION ACTIONS ({len(resolution_actions)}) ===\n")
+            for act in resolution_actions:
+                action_type = act.get("action", "?")
+                sid = act.get("skill_id", "?")
+                src = act.get("source", act.get("from_source", ""))
+                if "link_to" in act:
+                    print(
+                        f"  {action_type}: {sid} [{src}] -> {act['link_to']}"
+                    )
+                elif "from_source" in act:
+                    print(
+                        f"  {action_type}: {sid} (from {src}, {act.get('file_count', '?')} files)"
+                    )
+                else:
+                    reason = act.get("reason", "")
+                    print(f"  {action_type}: {sid} [{src}] {reason}")
 
 
 if __name__ == "__main__":

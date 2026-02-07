@@ -5,18 +5,17 @@ neoskills operations directly as tool calls. In plugin mode, results
 are namespace-qualified to avoid collisions with host agent skills.
 """
 
-from neoskills.adapters.factory import get_adapter
-from neoskills.bank.store import SkillStore
+from neoskills.core.cellar import Cellar
+from neoskills.core.linker import Linker
 from neoskills.core.mode import detect_mode
 from neoskills.core.namespace import NamespaceManager
-from neoskills.core.workspace import Workspace
-from neoskills.mappings.target import TargetManager
+from neoskills.core.tap import TapManager
 
 _ns = NamespaceManager(mode=detect_mode())
 
 
 def neoskills_list(query: str = "") -> dict:
-    """List skills in the bank, optionally filtered by query.
+    """List skills in taps, optionally filtered by query.
 
     Args:
         query: Optional search query to filter skills by name/description/tags.
@@ -24,90 +23,89 @@ def neoskills_list(query: str = "") -> dict:
     Returns:
         Dictionary with skill list and count.
     """
-    from neoskills.bank.registry import Registry
-
-    ws = Workspace()
-    registry = Registry(ws)
+    cellar = Cellar()
+    mgr = TapManager(cellar)
 
     if query:
-        skills = registry.search(query)
-    else:
-        skills = registry.list_all()
+        results = mgr.search(query)
+        return {
+            "mode": detect_mode().value,
+            "count": len(results),
+            "skills": [
+                {
+                    "id": _ns.qualify(s.skill_id),
+                    "name": s.name,
+                    "description": s.description,
+                }
+                for s in results
+            ],
+        }
 
+    default_tap = cellar.default_tap
+    skills = mgr.list_skills(default_tap)
     return {
         "mode": detect_mode().value,
         "count": len(skills),
         "skills": [
             {
-                "id": _ns.qualify(sid),
-                "name": info.get("name", sid),
-                "description": info.get("description", ""),
+                "id": _ns.qualify(s["skill_id"]),
+                "name": s.get("name", s["skill_id"]),
+                "description": s.get("description", ""),
             }
-            for sid, info in skills.items()
+            for s in skills
         ],
     }
 
 
-def neoskills_scan(target_id: str = "claude-code-user") -> dict:
-    """Scan a target for installed skills.
+def neoskills_scan(target: str | None = None) -> dict:
+    """Scan a target for linked skills.
 
     Args:
-        target_id: Target to scan (default: claude-code-user).
+        target: Target to scan (default: from config).
 
     Returns:
         Dictionary with discovered skills.
     """
-    ws = Workspace()
-    mgr = TargetManager(ws)
-    mgr.ensure_builtins()
-    target = mgr.get(target_id)
-    if not target:
-        return {"error": f"Target '{target_id}' not found"}
-
-    adapter = get_adapter(target.agent_type)
-    discovered = adapter.discover(target)
+    cellar = Cellar()
+    linker = Linker(cellar)
+    links = linker.list_links(target)
 
     return {
-        "target": target_id,
-        "count": len(discovered),
+        "target": target or cellar.load_config().get("default_target", "claude-code"),
+        "count": len(links),
         "skills": [
-            {"id": s.skill_id, "name": s.name, "description": s.description} for s in discovered
+            {"id": l["skill_id"], "is_symlink": l["is_symlink"], "source": l.get("source", "")}
+            for l in links
         ],
     }
 
 
-def neoskills_deploy(skill_id: str, target_id: str) -> dict:
-    """Deploy a skill from the bank to a target.
+def neoskills_deploy(skill_id: str, target: str | None = None) -> dict:
+    """Link a skill from the default tap to a target.
 
     Args:
-        skill_id: Skill to deploy (bare or namespace-qualified).
-        target_id: Target to deploy to.
+        skill_id: Skill to link (bare or namespace-qualified).
+        target: Target to link to.
 
     Returns:
-        Dictionary with deployment result.
+        Dictionary with link result.
     """
-    # Strip namespace prefix if present
     bare_id = _ns.strip(skill_id)
 
-    ws = Workspace()
-    store = SkillStore(ws)
-    mgr = TargetManager(ws)
-    mgr.ensure_builtins()
+    cellar = Cellar()
+    mgr = TapManager(cellar)
+    linker = Linker(cellar)
 
-    skill = store.get(bare_id)
-    if not skill:
-        return {"error": f"Skill '{bare_id}' not found in bank"}
+    source = mgr.get_skill_path(bare_id)
+    if not source:
+        return {"error": f"Skill '{bare_id}' not found in any tap"}
 
-    target = mgr.get(target_id)
-    if not target:
-        return {"error": f"Target '{target_id}' not found"}
-
-    adapter = get_adapter(target.agent_type)
-    variant_content = store.get_variant_content(bare_id, target.agent_type)
-    content = variant_content or adapter.translate(skill, target)
-    path = adapter.install(target, bare_id, content)
-
-    return {"status": "deployed", "skill_id": _ns.qualify(bare_id), "target": target_id, "path": str(path)}
+    action = linker.link(bare_id, source, target)
+    return {
+        "status": action.action,
+        "skill_id": _ns.qualify(bare_id),
+        "path": str(action.link_path),
+    }
 
 
 def neoskills_enhance(skill_id: str, operation: str = "audit") -> dict:
@@ -124,19 +122,23 @@ def neoskills_enhance(skill_id: str, operation: str = "audit") -> dict:
 
     bare_id = _ns.strip(skill_id)
 
-    ws = Workspace()
-    store = SkillStore(ws)
+    cellar = Cellar()
+    mgr = TapManager(cellar)
+    skill_path = mgr.get_skill_path(bare_id)
 
-    skill = store.get(bare_id)
-    if not skill:
-        return {"error": f"Skill '{bare_id}' not found in bank"}
+    if not skill_path:
+        return {"error": f"Skill '{bare_id}' not found in any tap"}
+
+    skill_md = skill_path / "SKILL.md"
+    if not skill_md.exists():
+        return {"error": f"No SKILL.md found for '{bare_id}'"}
 
     enhancer = Enhancer()
     if not enhancer.available:
         return {"error": "No LLM backend available"}
 
     try:
-        result = enhancer.enhance(skill.content, operation)
+        result = enhancer.enhance(skill_md.read_text(), operation)
         return {"status": "success", "operation": operation, "result": result}
     except Exception as e:
         return {"error": str(e)}
@@ -149,7 +151,7 @@ def neoskills_capabilities() -> dict:
         Dictionary with mode and available capabilities.
     """
     mode = detect_mode()
-    caps = ["discover", "lifecycle", "evolution", "registry", "governance"]
+    caps = ["list", "scan", "deploy", "enhance", "doctor"]
 
     return {
         "mode": mode.value,

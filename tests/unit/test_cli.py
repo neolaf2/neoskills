@@ -14,7 +14,7 @@ class TestCLI:
     def test_version(self):
         result = self.runner.invoke(cli, ["--version"])
         assert result.exit_code == 0
-        assert "0.2.1" in result.output
+        assert "0.3.0" in result.output
 
     def test_help(self):
         result = self.runner.invoke(cli, ["--help"])
@@ -33,19 +33,19 @@ class TestCLI:
         assert result.exit_code == 0
         assert "up to date" in result.output
 
-    def test_config_set_get(self, tmp_path: Path, monkeypatch):
-        from neoskills.core.workspace import Workspace
+    def test_config_set_get(self, tmp_path: Path):
+        from neoskills.core.cellar import Cellar
 
-        ws = Workspace(tmp_path / ".neoskills")
-        ws.initialize()
+        cellar = Cellar(tmp_path / ".neoskills")
+        cellar.initialize()
 
-        # Patch Workspace default root to our tmp dir
-        original_init = Workspace.__init__
+        # Patch Cellar default root to our tmp dir
+        original_init = Cellar.__init__
 
         def patched_init(self, root=None):
             original_init(self, tmp_path / ".neoskills")
 
-        monkeypatch.setattr("neoskills.core.workspace.Workspace.__init__", patched_init)
-
-        result = self.runner.invoke(cli, ["config", "set", "test.key", "test-value"])
-        assert result.exit_code == 0
+        import unittest.mock
+        with unittest.mock.patch.object(Cellar, "__init__", patched_init):
+            result = self.runner.invoke(cli, ["config", "set", "test_key", "test-value"])
+            assert result.exit_code == 0

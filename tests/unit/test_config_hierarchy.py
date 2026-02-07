@@ -5,7 +5,6 @@ from pathlib import Path
 import yaml
 
 from neoskills.core.config import Config, ConfigHierarchy
-from neoskills.core.workspace import Workspace
 
 
 def _write_yaml(path: Path, data: dict) -> None:
@@ -85,21 +84,26 @@ class TestBackwardCompat:
 
 
 class TestInitValidation:
-    def test_init_validation_missing_registry(self, tmp_path: Path):
-        """validate_init() should error when registry is missing."""
-        ws = Workspace(root=tmp_path / ".neoskills")
-        ws.ensure_directories()
-        # Config exists but registry doesn't
-        ws.ensure_config_files()
-        ws.registry_file.unlink()
+    def test_cellar_init_creates_config(self, tmp_path: Path):
+        """Cellar.initialize() should create config.yaml."""
+        from neoskills.core.cellar import Cellar
 
-        result = ws.validate_init()
-        assert len(result["errors"]) >= 1
-        assert any("Registry" in e for e in result["errors"])
+        cellar = Cellar(root=tmp_path / ".neoskills")
+        cellar.initialize()
+        assert cellar.config_file.exists()
+        config = cellar.load_config()
+        assert config["version"] == "0.3.0"
 
-    def test_init_validation_passes(self, tmp_path: Path):
-        """validate_init() should pass on a properly initialized workspace."""
-        ws = Workspace(root=tmp_path / ".neoskills")
-        ws.initialize()
-        result = ws.validate_init()
-        assert result["errors"] == []
+    def test_cellar_init_is_idempotent(self, tmp_path: Path):
+        """Re-initializing should not overwrite existing config."""
+        from neoskills.core.cellar import Cellar
+
+        cellar = Cellar(root=tmp_path / ".neoskills")
+        cellar.initialize()
+        config = cellar.load_config()
+        config["custom_key"] = "preserved"
+        cellar.save_config(config)
+
+        result = cellar.initialize()
+        assert len(result["files"]) == 0
+        assert cellar.load_config()["custom_key"] == "preserved"

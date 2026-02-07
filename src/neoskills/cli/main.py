@@ -22,17 +22,25 @@ cli.add_command(init)
 def _register_later_commands() -> None:
     """Register commands from later phases (silently skip if not yet implemented)."""
     command_modules = [
+        # --- v0.3 Brew-style commands ---
+        ("neoskills.cli.tap_cmd", "tap"),
+        ("neoskills.cli.tap_cmd", "untap"),
+        ("neoskills.cli.brew_install_cmd", "brew_install"),  # registers as "install"
+        ("neoskills.cli.brew_install_cmd", "uninstall"),
+        ("neoskills.cli.link_cmd", "link"),
+        ("neoskills.cli.link_cmd", "unlink"),
+        ("neoskills.cli.update_cmd", "update"),
+        ("neoskills.cli.update_cmd", "upgrade"),
+        ("neoskills.cli.list_cmd", "list_skills"),  # registers as "list"
+        ("neoskills.cli.list_cmd", "search"),
+        ("neoskills.cli.list_cmd", "info"),
+        ("neoskills.cli.doctor_cmd", "doctor"),
+        ("neoskills.cli.create_cmd", "create"),
+        ("neoskills.cli.push_cmd", "push"),
+        ("neoskills.cli.migrate_cmd", "migrate"),
+        # --- Kept commands ---
         ("neoskills.cli.config_cmd", "config"),
-        ("neoskills.cli.target_cmd", "target"),
-        ("neoskills.cli.scan_cmd", "scan"),
-        ("neoskills.cli.import_cmd", "import_skills"),
-        ("neoskills.cli.deploy_cmd", "deploy"),
-        ("neoskills.cli.embed_cmd", "embed"),
-        ("neoskills.cli.embed_cmd", "unembed"),
-        ("neoskills.cli.sync_cmd", "sync"),
         ("neoskills.cli.enhance_cmd", "enhance"),
-        ("neoskills.cli.validate_cmd", "validate"),
-        ("neoskills.cli.install_cmd", "install"),
         ("neoskills.cli.agent_cmd", "agent"),
         ("neoskills.cli.plugin_cmd", "plugin"),
     ]

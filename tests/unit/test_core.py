@@ -2,11 +2,11 @@
 
 from pathlib import Path
 
+from neoskills.core.cellar import Cellar
 from neoskills.core.checksum import checksum_string, checksum_file
 from neoskills.core.config import Config
 from neoskills.core.frontmatter import parse_frontmatter, write_frontmatter, extract_skill_name
-from neoskills.core.models import Skill, SkillMetadata, Target, Bundle
-from neoskills.core.workspace import Workspace
+from neoskills.core.models import SkillSpec
 
 
 class TestFrontmatter:
@@ -81,54 +81,65 @@ class TestConfig:
         assert cfg.get("nonexistent", "default") == "default"
 
 
-class TestWorkspace:
+class TestCellar:
     def test_initialize(self, tmp_path: Path):
-        ws = Workspace(tmp_path / ".neoskills")
-        result = ws.initialize()
-        assert len(result["directories"]) > 0
-        assert len(result["memory_files"]) == 6
-        assert len(result["config_files"]) == 4  # config.yaml, registry.yaml, state.yaml, .gitignore
-        assert ws.is_initialized
+        cellar = Cellar(tmp_path / ".neoskills")
+        result = cellar.initialize()
+        assert len(result["directories"]) == 3  # root, taps, cache
+        assert len(result["files"]) == 2  # config.yaml, .gitignore
+        assert cellar.is_initialized
 
     def test_idempotent_init(self, tmp_path: Path):
-        ws = Workspace(tmp_path / ".neoskills")
-        ws.initialize()
-        result = ws.initialize()
+        cellar = Cellar(tmp_path / ".neoskills")
+        cellar.initialize()
+        result = cellar.initialize()
         assert len(result["directories"]) == 0
-        assert len(result["memory_files"]) == 0
-        assert len(result["config_files"]) == 0
+        assert len(result["files"]) == 0
 
-    def test_my_memory_never_overwritten(self, tmp_path: Path):
-        ws = Workspace(tmp_path / ".neoskills")
-        ws.initialize()
-        # Modify a memory file
-        agents_file = ws.my_memory / "AGENTS.md"
-        agents_file.write_text("Custom content")
-        # Re-initialize
-        ws.ensure_my_memory()
-        assert agents_file.read_text() == "Custom content"
+    def test_load_save_config(self, tmp_path: Path):
+        cellar = Cellar(tmp_path / ".neoskills")
+        cellar.initialize()
+        config = cellar.load_config()
+        assert config["version"] == "0.3.0"
+        assert config["default_tap"] == "mySkills"
+
+        config["default_target"] = "opencode"
+        cellar.save_config(config)
+
+        reloaded = cellar.load_config()
+        assert reloaded["default_target"] == "opencode"
+
+    def test_target_path(self, tmp_path: Path):
+        cellar = Cellar(tmp_path / ".neoskills")
+        cellar.initialize()
+        path = cellar.target_path("claude-code")
+        assert str(path).endswith("/.claude/skills")
+
+    def test_tap_dirs(self, tmp_path: Path):
+        cellar = Cellar(tmp_path / ".neoskills")
+        cellar.initialize()
+        assert cellar.tap_dir("mySkills") == cellar.taps_dir / "mySkills"
+        assert cellar.tap_skills_dir("mySkills") == cellar.taps_dir / "mySkills" / "skills"
 
 
-class TestModels:
-    def test_skill_creation(self):
-        meta = SkillMetadata(name="test", description="A test skill")
-        skill = Skill(skill_id="test", metadata=meta, content="# Test")
-        assert skill.skill_id == "test"
-        assert skill.metadata.name == "test"
-
-    def test_target_creation(self):
-        target = Target(
-            target_id="claude-code-user",
-            agent_type="claude-code",
-            discovery_paths=["~/.claude/skills"],
+class TestSkillSpec:
+    def test_from_skill_dir(self, tmp_path: Path):
+        skill_dir = tmp_path / "test-skill"
+        skill_dir.mkdir()
+        (skill_dir / "SKILL.md").write_text(
+            "---\nname: test-skill\ndescription: A test\ntags:\n  - first-party\n---\n\n# Test\n"
         )
-        assert target.target_id == "claude-code-user"
-        assert target.writable is True
+        spec = SkillSpec.from_skill_dir(skill_dir, tap_name="mySkills")
+        assert spec.skill_id == "test-skill"
+        assert spec.name == "test-skill"
+        assert spec.description == "A test"
+        assert "first-party" in spec.tags
+        assert spec.tap == "mySkills"
 
-    def test_bundle_creation(self):
-        bundle = Bundle(
-            bundle_id="research",
-            name="Research Bundle",
-            skill_ids=["skill-a", "skill-b"],
-        )
-        assert len(bundle.skill_ids) == 2
+    def test_from_skill_dir_no_frontmatter(self, tmp_path: Path):
+        skill_dir = tmp_path / "bare-skill"
+        skill_dir.mkdir()
+        (skill_dir / "SKILL.md").write_text("# Bare Skill\n\nNo frontmatter.\n")
+        spec = SkillSpec.from_skill_dir(skill_dir)
+        assert spec.skill_id == "bare-skill"
+        assert spec.name == "bare-skill"

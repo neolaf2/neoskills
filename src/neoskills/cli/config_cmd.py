@@ -3,8 +3,7 @@
 import click
 from rich.console import Console
 
-from neoskills.core.config import Config
-from neoskills.core.workspace import Workspace
+from neoskills.core.cellar import Cellar
 
 console = Console()
 
@@ -19,10 +18,12 @@ def config() -> None:
 @click.argument("value")
 def config_set(key: str, value: str) -> None:
     """Set a configuration value."""
-    ws = Workspace()
-    cfg = Config(ws.config_file)
-    cfg.set(key, value)
-    cfg.save()
+    cellar = Cellar()
+    cfg = cellar.load_config()
+
+    # Support dotted keys (e.g. "default_target")
+    cfg[key] = value
+    cellar.save_config(cfg)
     console.print(f"[green]Set {key} = {value}[/green]")
 
 
@@ -30,8 +31,8 @@ def config_set(key: str, value: str) -> None:
 @click.argument("key")
 def config_get(key: str) -> None:
     """Get a configuration value."""
-    ws = Workspace()
-    cfg = Config(ws.config_file)
+    cellar = Cellar()
+    cfg = cellar.load_config()
     value = cfg.get(key)
     if value is None:
         console.print(f"[yellow]{key} is not set[/yellow]")
@@ -44,6 +45,6 @@ def config_show() -> None:
     """Show all configuration."""
     import yaml
 
-    ws = Workspace()
-    cfg = Config(ws.config_file)
-    console.print(yaml.dump(cfg.data, default_flow_style=False))
+    cellar = Cellar()
+    cfg = cellar.load_config()
+    console.print(yaml.dump(cfg, default_flow_style=False))

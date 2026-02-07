@@ -1,3 +1,3 @@
-"""neoskills - Cross-Agent Skill Bank, Transfer System, and Embedded Skill Substrate."""
+"""neoskills - Homebrew-style skill manager for AI coding agents."""
 
-__version__ = "0.2.1"
+__version__ = "0.3.0"

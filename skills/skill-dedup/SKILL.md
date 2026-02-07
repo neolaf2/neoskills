@@ -1,15 +1,13 @@
 ---
 name: skill-dedup
-description: Identify and resolve duplicate skills across the neoskills bank and agent targets (Claude Code, OpenCode). Use when the user mentions duplicate skills, wants to deduplicate their skill bank, asks about redundant or overlapping skills, wants to clean up skills, or needs to audit skill inventory for duplicates. Also use when importing skills that may already exist in the bank.
+description: Identify and resolve duplicate skills across the neoskills bank and agent targets (Claude Code, OpenCode, plugins). Use when the user mentions duplicate skills, wants to deduplicate their skill bank, asks about redundant or overlapping skills, wants to clean up skills, or needs to audit skill inventory for duplicates. Also use when importing skills that may already exist in the bank.
 ---
 
 # Skill Dedup
 
-Scan for duplicate and near-duplicate skills across the neoskills bank and agent targets, then resolve them with merge/remove/keep strategies.
+Scan for duplicate and near-duplicate skills across the neoskills bank, agent targets, and plugins, then resolve them with merge/remove/keep strategies.
 
 ## Quick Start
-
-Run the bundled scan script to get an immediate overview:
 
 ```bash
 python scripts/dedup_scan.py
@@ -21,84 +19,75 @@ For machine-readable output:
 python scripts/dedup_scan.py --json
 ```
 
-## Scan Workflow
+Auto-resolve exact duplicates (replace target copies with symlinks to bank):
 
-### 1. Run the Scan
-
-Execute `scripts/dedup_scan.py` to scan all skill locations:
-
-- **Bank**: `~/.neoskills/LTM/bank/skills/` (canonical copies)
-- **Claude Code**: `~/.claude/skills/` (user-installed skills)
-- **OpenCode**: `~/.config/opencode/skills/` (user-installed skills)
-
-The script compares skills by:
-- **SHA256 checksum** — finds exact content duplicates
-- **Name similarity** (SequenceMatcher, threshold 0.75) — finds near-duplicates like `whisper` vs `openai-whisper`
-
-### 2. Interpret Results
-
-The scan produces two groups:
-
-**Exact Duplicates** — identical content across locations. These are safe to consolidate. The bank copy is canonical; remove target copies or replace with symlinks via `neoskills embed`.
-
-**Name-Similar Groups** — skills with similar names but different content. These need manual review. Actions:
-- `EXACT_DUPLICATE` — identical, keep one
-- `SIMILAR` — minor differences, pick the better version
-- `DIVERGED` — significantly different, review and merge
-
-### 3. Resolve Duplicates
-
-For each duplicate group, choose a resolution:
-
-**Keep bank copy, remove target copies** (most common for exact dupes):
 ```bash
-# Remove the target copy
-rm -rf ~/.claude/skills/<skill-name>
-
-# Or replace with a symlink to the bank
-neoskills embed --target claude-code-user
+python scripts/dedup_scan.py --resolve exact --dry-run   # preview
+python scripts/dedup_scan.py --resolve exact              # execute
 ```
 
-**Merge diverged versions** — read both versions, combine the best parts into the bank canonical copy:
-1. Read both: `cat ~/.neoskills/LTM/bank/skills/<id>/canonical/SKILL.md` and `cat ~/.claude/skills/<id>/SKILL.md`
-2. Merge content into the bank copy
-3. Remove or symlink the target copy
+## Three Duplicate Categories
 
-**Keep both** — if skills with similar names serve different purposes (e.g., `notebooklm-my-notebooks` vs `notebooklm-notebook-index`), leave them as-is.
+The scan classifies duplicates into three categories:
+
+**1. Exact Duplicates** — identical content (same SHA256) across locations. Safe to consolidate. The bank copy is canonical; target copies can be replaced with symlinks.
+
+**2. Diverged Copies** — same skill ID exists in multiple locations but content differs. The script identifies the "richer" copy (more files) and recommends importing it to the bank.
+
+**3. Name-Similar Groups** — different skill IDs with similar names and descriptions. These need manual review to determine if they're truly related or just coincidentally named.
+
+## Resolution
+
+### Auto-Resolve
+
+```bash
+# Replace exact-duplicate target copies with symlinks to bank
+python scripts/dedup_scan.py --resolve exact
+
+# Import richer diverged copies to bank, then symlink targets
+python scripts/dedup_scan.py --resolve diverged
+
+# Both at once
+python scripts/dedup_scan.py --resolve all
+
+# Preview without making changes
+python scripts/dedup_scan.py --resolve all --dry-run
+```
+
+Backups are saved as `.<skill-name>.dedup-backup` in the parent directory.
+
+### Manual Resolution
+
+For name-similar groups or cases needing judgment:
+
+```bash
+# Remove target copy, replace with symlink
+rm -rf ~/.claude/skills/<skill-name>
+neoskills embed --target claude-code-user
+
+# Import a better target version into the bank
+neoskills import from-target claude-code-user --skill <skill-name>
+```
 
 ## Script Options
 
 ```
 python scripts/dedup_scan.py [OPTIONS]
 
---bank PATH       Path to neoskills workspace (default: ~/.neoskills)
---targets LIST    Targets to scan (default: claude opencode)
---repos LIST      GitHub repos to scan (e.g. neolaf2/mySkills)
---threshold FLOAT Name similarity threshold 0.0-1.0 (default: 0.75)
---json            Output as JSON for programmatic use
+--bank PATH          Path to neoskills workspace (default: ~/.neoskills)
+--targets LIST       Targets to scan (default: claude opencode)
+--repos LIST         GitHub repos to scan (e.g. neolaf2/mySkills)
+--threshold FLOAT    Combined similarity threshold 0.0-1.0 (default: 0.80)
+--json               Output as JSON for programmatic use
+--no-plugins         Skip scanning ~/.claude/plugins/
+--resolve MODE       Auto-resolve: exact, diverged, or all
+--dry-run            Preview resolution without making changes
 ```
 
-### Scanning GitHub Repos
+## Scan Locations
 
-Include GitHub repos with nested skill structures (e.g. `custom/<skill>/`, `downloaded/<skill>/`):
-
-```bash
-python scripts/dedup_scan.py --repos neolaf2/mySkills
-```
-
-The script shallow-clones the repo to a temp directory, recursively finds all `SKILL.md` files, and includes them in the comparison. Skills are labeled with the repo name as their source.
-
-## Integration with neoskills CLI
-
-After identifying duplicates, use neoskills commands to resolve:
-
-```bash
-# See what's in the bank
-neoskills scan claude-code-user
-
-# Embed bank skills as symlinks (replaces target copies)
-neoskills embed --target claude-code-user
-
-# Import a better version into the bank
-neoskills import from-target claude-code-user --skill <skill-name>
-```
+- **Bank**: `~/.neoskills/LTM/bank/skills/` (canonical copies)
+- **Claude Code**: `~/.claude/skills/` (user-installed)
+- **OpenCode**: `~/.config/opencode/skills/` (user-installed)
+- **Plugins**: `~/.claude/plugins/*/skills/` and cache (disable with `--no-plugins`)
+- **GitHub repos**: cloned on demand with `--repos`
