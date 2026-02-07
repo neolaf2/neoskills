@@ -8,6 +8,12 @@ from pathlib import Path
 from neoskills.core.frontmatter import parse_frontmatter
 from neoskills.core.workspace import Workspace
 
+# Files that are never orphans (infrastructure / documentation files)
+_IGNORED_FILES = frozenset({".gitkeep", ".gitignore", "README.md", "LICENSE", "__init__.py"})
+
+# Regex to strip fenced code blocks before scanning for resource paths
+_FENCED_CODE_RE = re.compile(r"```[^\n]*\n.*?```", re.DOTALL)
+
 
 class Severity(Enum):
     ERROR = "error"
@@ -49,8 +55,12 @@ class ValidationReport:
 
 
 # Regex to find paths like scripts/foo.sh, references/bar.md, assets/baz.png
-# in the SKILL.md body (including inside markdown links, code blocks, etc.)
 _RESOURCE_PATH_RE = re.compile(r"(?:scripts|references|assets)/[\w./_-]*\w")
+
+
+def _strip_code_blocks(text: str) -> str:
+    """Remove fenced code blocks so paths inside examples aren't matched."""
+    return _FENCED_CODE_RE.sub("", text)
 
 
 class SkillValidator:
@@ -91,7 +101,8 @@ class SkillValidator:
 
         content = skill_file.read_text()
         _, body = parse_frontmatter(content)
-        referenced = _RESOURCE_PATH_RE.findall(body)
+        body_no_code = _strip_code_blocks(body)
+        referenced = _RESOURCE_PATH_RE.findall(body_no_code)
 
         created = []
         for ref_path in sorted(set(referenced)):
@@ -124,32 +135,35 @@ class SkillValidator:
         content = skill_file.read_text()
         fm, body = parse_frontmatter(content)
 
-        # Check 2: Frontmatter has name
-        if not fm.get("name"):
+        # Check 2: Frontmatter has name (must be a non-empty string)
+        name_val = fm.get("name")
+        if not name_val or not isinstance(name_val, str):
             report.issues.append(
                 ValidationIssue(
                     skill_id=skill_id,
                     severity=Severity.ERROR,
                     category=Category.FRONTMATTER,
-                    message="frontmatter missing 'name' field",
+                    message="frontmatter missing or invalid 'name' field (must be a non-empty string)",
                     path=skill_file,
                 )
             )
 
-        # Check 3: Frontmatter has description
-        if not fm.get("description"):
+        # Check 3: Frontmatter has description (must be a non-empty string)
+        desc_val = fm.get("description")
+        if not desc_val or not isinstance(desc_val, str):
             report.issues.append(
                 ValidationIssue(
                     skill_id=skill_id,
                     severity=Severity.ERROR,
                     category=Category.FRONTMATTER,
-                    message="frontmatter missing 'description' field",
+                    message="frontmatter missing or invalid 'description' field (must be a non-empty string)",
                     path=skill_file,
                 )
             )
 
-        # Check 4: Referenced paths exist on disk
-        referenced_paths = set(_RESOURCE_PATH_RE.findall(body))
+        # Check 4: Referenced paths exist on disk (strip code blocks first)
+        body_no_code = _strip_code_blocks(body)
+        referenced_paths = set(_RESOURCE_PATH_RE.findall(body_no_code))
         for ref_path in sorted(referenced_paths):
             full_path = canonical / ref_path
             if not full_path.exists():
@@ -170,6 +184,8 @@ class SkillValidator:
                 continue
             for file_path in sorted(subdir.rglob("*")):
                 if not file_path.is_file():
+                    continue
+                if file_path.name in _IGNORED_FILES:
                     continue
                 rel = str(file_path.relative_to(canonical))
                 if rel not in referenced_paths:

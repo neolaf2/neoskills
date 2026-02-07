@@ -77,6 +77,15 @@ def init(root: str | None, repo_url: str | None, branch: str, force: bool) -> No
         f"{len(configs_created)} config files[/dim]"
     )
 
+    # Init-time validation
+    validation = workspace.validate_init()
+    if validation["errors"]:
+        for err in validation["errors"]:
+            console.print(f"  [red]ERROR:[/red] {err}")
+    if validation["warnings"]:
+        for warn in validation["warnings"]:
+            console.print(f"  [yellow]WARN:[/yellow] {warn}")
+
 
 def _init_from_repo(workspace: Workspace, repo_url: str, branch: str, force: bool) -> None:
     """Clone an existing skill bank repo as the workspace."""

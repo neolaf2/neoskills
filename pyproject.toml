@@ -1,6 +1,6 @@
 [project]
 name = "neoskills"
-version = "0.2.0"
+version = "0.2.1"
 description = "Cross-Agent Skill Bank, Transfer System, and Embedded Skill Substrate"
 readme = "README.md"
 requires-python = ">=3.13"

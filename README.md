@@ -135,6 +135,7 @@ neoskills target add my-server \
 | `neoskills install <skill_id>...` | One-step bank verify + embed |
 | `neoskills agent list\|run` | List or run autonomous agents |
 | `neoskills config set\|get\|show` | Configuration management |
+| `neoskills plugin create\|validate` | Plugin scaffolding and validation |
 
 ## Three Operating Modes
 

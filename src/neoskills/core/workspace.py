@@ -135,6 +135,10 @@ class Workspace:
     def targets_agents(self) -> Path:
         return self.targets_dir / "agents"
 
+    @property
+    def gitignore_file(self) -> Path:
+        return self.root / ".gitignore"
+
     # --- Operations ---
 
     def all_directories(self) -> list[Path]:
@@ -207,6 +211,14 @@ class Workspace:
             self.state_file.write_text(yaml.dump(default_state, default_flow_style=False))
             created.append(self.state_file)
 
+        if not self.gitignore_file.exists():
+            self.gitignore_file.write_text(
+                "# Secrets\n.env\n\n"
+                "# Python\n*.pyc\n__pycache__/\n\n"
+                "# Ephemeral runtime data\nSTM/sessions/\nSTM/runs/\nSTM/logs/\n"
+            )
+            created.append(self.gitignore_file)
+
         return created
 
     def initialize(self) -> dict[str, list[Path]]:
@@ -219,6 +231,42 @@ class Workspace:
             "memory_files": memory_files,
             "config_files": config_files,
         }
+
+    def validate_init(self) -> dict[str, list[str]]:
+        """Run init-time validation checks. Returns dict with 'errors' and 'warnings' lists."""
+        errors: list[str] = []
+        warnings: list[str] = []
+
+        # Required: registry must exist and be readable
+        if not self.registry_file.exists():
+            errors.append(f"Registry file missing: {self.registry_file}")
+        else:
+            try:
+                import yaml
+
+                data = yaml.safe_load(self.registry_file.read_text())
+                if not isinstance(data, dict):
+                    errors.append("Registry file is not a valid YAML mapping")
+            except Exception as exc:
+                errors.append(f"Registry file unreadable: {exc}")
+
+        # Required: config schema version
+        if self.config_file.exists():
+            import yaml
+
+            cfg = yaml.safe_load(self.config_file.read_text()) or {}
+            version = cfg.get("version", "")
+            if not version:
+                warnings.append("Config missing 'version' field")
+
+            # Optional: master_repo check
+            master_url = cfg.get("master_repo", {}).get("url") if isinstance(
+                cfg.get("master_repo"), dict
+            ) else None
+            if master_url:
+                warnings.append(f"master_repo configured: {master_url} (not verified at init)")
+
+        return {"errors": errors, "warnings": warnings}
 
     @property
     def is_initialized(self) -> bool:

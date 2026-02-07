@@ -34,6 +34,7 @@ def _register_later_commands() -> None:
         ("neoskills.cli.validate_cmd", "validate"),
         ("neoskills.cli.install_cmd", "install"),
         ("neoskills.cli.agent_cmd", "agent"),
+        ("neoskills.cli.plugin_cmd", "plugin"),
     ]
     import importlib
 

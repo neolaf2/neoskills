@@ -32,7 +32,10 @@ def validate(skill: str | None, fix: bool, root: str | None) -> None:
     validator = SkillValidator(workspace)
 
     # Fix stubs if requested
-    if fix and skill:
+    if fix:
+        if not skill:
+            console.print("[red]--fix requires --skill <id>[/red]")
+            raise SystemExit(1)
         created = validator.fix_stubs(skill)
         if created:
             console.print(f"[green]Created {len(created)} stub files:[/green]")
@@ -40,6 +43,11 @@ def validate(skill: str | None, fix: bool, root: str | None) -> None:
                 console.print(f"  {p}")
         else:
             console.print("[dim]No stubs needed.[/dim]")
+        # Show validation report after fixing
+        report = validator.validate_one(skill)
+        _display_report(report)
+        if not report.passed:
+            raise SystemExit(1)
         return
 
     # Validate

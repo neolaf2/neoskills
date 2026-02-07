@@ -108,6 +108,67 @@ class TestValidatorChecks:
         assert "scripts/unused.sh" in report.warnings[0].message
 
 
+    def test_orphan_gitkeep_not_reported(self, validator_workspace):
+        """`.gitkeep` files should never be flagged as orphans."""
+        _make_skill(
+            validator_workspace,
+            "with-gitkeep",
+            "---\nname: with-gitkeep\ndescription: Has gitkeep\n---\n\nNo refs.\n",
+            files={"scripts/.gitkeep": ""},
+        )
+        report = SkillValidator(validator_workspace).validate_one("with-gitkeep")
+        assert report.passed
+        assert report.warnings == []
+
+    def test_orphan_readme_not_reported(self, validator_workspace):
+        """README.md in subdirectories should never be flagged as orphans."""
+        _make_skill(
+            validator_workspace,
+            "with-readme",
+            "---\nname: with-readme\ndescription: Has readme\n---\n\nNo refs.\n",
+            files={"scripts/README.md": "# Scripts\n"},
+        )
+        report = SkillValidator(validator_workspace).validate_one("with-readme")
+        assert report.passed
+        assert report.warnings == []
+
+    def test_path_inside_code_block_not_matched(self, validator_workspace):
+        """Paths inside fenced code blocks should not be treated as references."""
+        _make_skill(
+            validator_workspace,
+            "code-block",
+            (
+                "---\nname: code-block\ndescription: Has code block\n---\n\n"
+                "Example:\n\n```bash\ncat scripts/example.sh\n```\n\n"
+                "That's it.\n"
+            ),
+        )
+        report = SkillValidator(validator_workspace).validate_one("code-block")
+        assert report.passed  # scripts/example.sh inside code block should be ignored
+        ref_errors = [i for i in report.errors if i.category == Category.REFERENCE]
+        assert len(ref_errors) == 0
+
+    def test_name_must_be_string(self, validator_workspace):
+        """name: 123 (integer) should fail validation."""
+        _make_skill(validator_workspace, "int-name", (
+            "---\nname: 123\ndescription: Valid desc\n---\n\nBody.\n"
+        ))
+        report = SkillValidator(validator_workspace).validate_one("int-name")
+        assert not report.passed
+        errors = [i for i in report.errors if i.category == Category.FRONTMATTER]
+        assert any("name" in e.message for e in errors)
+
+    def test_description_must_be_string(self, validator_workspace):
+        """description: true (boolean) should fail validation."""
+        _make_skill(validator_workspace, "bool-desc", (
+            "---\nname: bool-desc\ndescription: true\n---\n\nBody.\n"
+        ))
+        report = SkillValidator(validator_workspace).validate_one("bool-desc")
+        assert not report.passed
+        errors = [i for i in report.errors if i.category == Category.FRONTMATTER]
+        assert any("description" in e.message for e in errors)
+
+
 class TestValidateAll:
     def test_counts_all_skills(self, validator_workspace):
         _make_skill(validator_workspace, "a", "---\nname: a\ndescription: A\n---\n\nOK.\n")
@@ -146,3 +207,22 @@ class TestFixStubs:
         # Verify original content preserved
         canonical = validator_workspace.bank_skills / "has-file" / "canonical"
         assert "echo real" in (canonical / "scripts" / "build.sh").read_text()
+
+    def test_fix_stubs_then_passes(self, validator_workspace):
+        """After fix_stubs creates stubs, validation should pass (no missing refs)."""
+        _make_skill(validator_workspace, "fixable", (
+            "---\nname: fixable\ndescription: Can be fixed\n---\n\n"
+            "Run scripts/setup.sh for setup.\n"
+        ))
+        validator = SkillValidator(validator_workspace)
+        # Before fix: should have reference error
+        report_before = validator.validate_one("fixable")
+        assert not report_before.passed
+
+        # Fix stubs
+        created = validator.fix_stubs("fixable")
+        assert len(created) == 1
+
+        # After fix: should pass
+        report_after = validator.validate_one("fixable")
+        assert report_after.passed

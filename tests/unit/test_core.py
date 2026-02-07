@@ -87,7 +87,7 @@ class TestWorkspace:
         result = ws.initialize()
         assert len(result["directories"]) > 0
         assert len(result["memory_files"]) == 6
-        assert len(result["config_files"]) == 3
+        assert len(result["config_files"]) == 4  # config.yaml, registry.yaml, state.yaml, .gitignore
         assert ws.is_initialized
 
     def test_idempotent_init(self, tmp_path: Path):
