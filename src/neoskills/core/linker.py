@@ -89,7 +89,7 @@ class Linker:
             if item.is_symlink():
                 # Only unlink symlinks that point into our taps
                 resolved = item.resolve()
-                if str(self.cellar.taps_dir) in str(resolved):
+                if resolved.is_relative_to(self.cellar.taps_dir):
                     actions.append(self.unlink(item.name, target))
         return actions
 
@@ -103,7 +103,7 @@ class Linker:
         for item in sorted(target_dir.iterdir()):
             if item.is_symlink():
                 resolved = item.resolve()
-                managed = str(self.cellar.taps_dir) in str(resolved)
+                managed = resolved.is_relative_to(self.cellar.taps_dir)
                 broken = not resolved.exists()
                 results.append({
                     "skill_id": item.name,

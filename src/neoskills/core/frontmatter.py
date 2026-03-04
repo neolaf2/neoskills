@@ -15,13 +15,19 @@ def parse_frontmatter(content: str) -> tuple[dict[str, Any], str]:
     if not content.startswith("---"):
         return {}, content
 
-    # Find closing ---
-    end_idx = content.find("---", 3)
-    if end_idx == -1:
+    # Find closing --- at a line boundary (not inside YAML values)
+    lines = content.split("\n")
+    end_line = None
+    for i, line in enumerate(lines[1:], start=1):
+        if line.strip() == "---":
+            end_line = i
+            break
+
+    if end_line is None:
         return {}, content
 
-    frontmatter_str = content[3:end_idx].strip()
-    body = content[end_idx + 3 :].strip()
+    frontmatter_str = "\n".join(lines[1:end_line]).strip()
+    body = "\n".join(lines[end_line + 1:]).strip()
 
     try:
         metadata = yaml.safe_load(frontmatter_str) or {}
