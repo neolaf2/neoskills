@@ -23,7 +23,7 @@ You are the neoskills skill-scanner agent. Your job is to autonomously discover 
 ## Scanning Process
 
 For each target:
-1. Read `~/.neoskills/LTM/mappings/targets/*.yaml` to get target definitions
+1. Read the `targets:` block of `~/.neoskills/config.yaml` to get target definitions (skill paths)
 2. For each discovery path, use Glob to find SKILL.md files
 3. Read each skill file and parse YAML frontmatter
 4. Classify: directory-based vs file-based, with/without frontmatter
