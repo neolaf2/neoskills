@@ -9,22 +9,27 @@ Display the current status of the neoskills skill bank.
 
 ## Instructions
 
-1. Read `~/.neoskills/registry.yaml` to get the skill catalog
-2. Count total skills, their tags, and when they were last updated
-3. Check `~/.neoskills/state.yaml` for any currently embedded skills
-4. Read target definitions from `~/.neoskills/LTM/mappings/targets/` to show configured targets
+1. Read `~/.neoskills/config.yaml` to get the configured taps and targets
+2. Walk each tap's `skills/` directory (e.g. `~/.neoskills/taps/mySkills/skills/`) to build the catalog
+3. Count total skills and their tags; take "last updated" from the newest file mtime or `git -C <tap> log -1`
+4. Derive embedded skills from the filesystem: look in each target's skill path for symlinks that resolve
+   into `~/.neoskills/taps/`. There is no `state.yaml` to read — state is always re-derived (v0.3+)
 
 ## Output Format
 
 Present a summary:
 - **Bank**: Total skills, last updated timestamp
 - **Targets**: List configured targets with skill counts
-- **Embedded**: Any currently embedded skills (symlinked)
+- **Embedded**: Any currently linked skills (symlinks)
 - **Recent**: Last 5 imported skills with provenance
 
 ## Quick Commands
 
-If the user wants to take action, suggest:
-- `neoskills scan <target>` to discover new skills
-- `neoskills import from-target <target> --all` to import everything
-- `neoskills embed --target <target>` to embed bank into agent
+These commands exist in the current (v0.3+) CLI. The v0.2 commands `scan`, `import` and `embed`
+were removed together with the `LTM/` and `bank/` directories:
+
+- `neoskills list` — list every skill discovered in your taps
+- `neoskills list --linked` — show only what is linked into an agent
+- `neoskills tap <git-url>` — add a skill source repository
+- `neoskills install <skill_id>` — copy to the default tap and link it to the target
+- `neoskills doctor` — health check for config, taps and symlinks
